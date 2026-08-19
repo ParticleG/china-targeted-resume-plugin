@@ -1,0 +1,56 @@
+# Python and tooling caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# Local secrets, editor state, and OS metadata
+.env
+.env.*
+!.env.example
+!.env.*.example
+/.idea/
+/.vscode/
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# Virtual environments and build products
+.venv/
+venv/
+dist/
+build/
+*.egg-info/
+
+# Generated and evaluation runs
+runs/
+evals/runs/
+eval-output/
+eval-results/
+*-workspace/
+
+# Browser downloads and profiles
+.playwright/
+playwright-report/
+browser-assets/
+ms-playwright/
+
+# Skill packaging staging and archives
+.skill-staging/
+package-staging/
+*.skill
+
+# Real career source material and generated personal output
+real-source/
+real-data/
+private-source/
+career-data/
+output/
+outputs/
+real-output/
