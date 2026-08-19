@@ -1,0 +1,141 @@
+"""Command-line interface for deterministic targeted-resume operations."""
+from __future__ import annotations
+
+import argparse
+import json
+from pathlib import Path
+import sys
+from typing import Any, Sequence
+
+from pydantic import ValidationError
+
+from .io import jsonable, read_json
+from .models import JdInput, OutputMode, RunRequest
+from .pipeline import Pipeline, PipelineError, PipelineResult, SelectionRequired
+
+
+def _path(value: str) -> Path:
+    return Path(value).expanduser()
+
+
+def _parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="china-targeted-resume",
+        description="Build deterministic, evidence-grounded China-targeted resume artifacts.",
+    )
+    commands = parser.add_subparsers(dest="command", required=True, metavar="COMMAND")
+
+    companies = commands.add_parser("list-companies", help="List company targets discovered in a career source.")
+    companies.add_argument("--source", type=_path, required=True, help="Read-only career source root.")
+
+    roles = commands.add_parser("list-roles", help="List roles for one discovered company.")
+    roles.add_argument("--source", type=_path, required=True, help="Read-only career source root.")
+    roles.add_argument("--company", required=True, help="Exact company ID or display name.")
+
+    generate = commands.add_parser("generate", help="Generate and validate a complete non-overwriting resume run.")
+    generate.add_argument("--source", type=_path, required=True, help="Read-only career source root.")
+    generate.add_argument("--company", help="Exact company ID or display name.")
+    generate.add_argument("--role", help="Exact role ID or title.")
+    jd = generate.add_mutually_exclusive_group()
+    jd.add_argument("--jd-text", help="Offline JD text supplied directly.")
+    jd.add_argument("--jd-file", type=_path, help="Offline UTF-8 JD file (maximum 2 MiB).")
+    jd.add_argument("--jd-url", help="Explicit HTTPS JD URL to fetch with size/time bounds.")
+    generate.add_argument("--mode", choices=[item.value for item in OutputMode], default=OutputMode.TARGETED_APPLICATION.value, help="Disclosure/output context (default: targeted_application).")
+    generate.add_argument("--pages", type=int, default=2, choices=range(1, 7), metavar="1-6", help="Target PDF page count (default: 2).")
+    generate.add_argument("--template", choices=("ats-simple", "human-readable"), default="ats-simple", help="Local rendering template (default: ats-simple).")
+    generate.add_argument("--output", type=_path, required=True, help="Output root, separate from the source root.")
+    generate.add_argument("--language", default="zh-CN", help="Resume locale (default: zh-CN).")
+    generate.add_argument("--export-roadmap-handoff", action="store_true", help="Explicitly include the optional roadmap handoff.")
+
+    analyze = commands.add_parser("analyze-role", help="Analyze a validated RunRequest JSON and create a run-local dossier.")
+    analyze.add_argument("--request", type=_path, required=True, help="Path to a RunRequest JSON file.")
+
+    refresh_role = commands.add_parser("refresh-role", help="Refresh role analysis into a new non-overwriting run.")
+    refresh_role.add_argument("--role", type=_path, required=True, help="Existing run or role-dossier directory.")
+
+    refresh_match = commands.add_parser("refresh-match", help="Refresh evidence mappings affected by current source hashes.")
+    refresh_match.add_argument("--role", type=_path, required=True, help="Existing run or role-dossier directory.")
+
+    export = commands.add_parser("export-roadmap-handoff", help="Explicitly export confirmed gaps for a separate roadmap workflow.")
+    export.add_argument("--role", type=_path, required=True, help="Existing run or role-dossier directory.")
+    export.add_argument("--severity", default="Critical,Major", help="Comma-separated severities (default: Critical,Major).")
+    export.add_argument("--output", type=_path, required=True, help="Destination roadmap-handoff.json.")
+
+    evidence = commands.add_parser("build-evidence-map", help="Rebuild the deterministic evidence map for an existing run.")
+    evidence.add_argument("--run", type=_path, required=True, help="Existing run directory.")
+
+    validate = commands.add_parser("validate-content", help="Run deterministic content audits for an existing run.")
+    validate.add_argument("--run", type=_path, required=True, help="Existing run directory.")
+
+    render = commands.add_parser("render", help="Render a ResumeDocument JSON independently to PDF and preview.")
+    render.add_argument("--document", type=_path, required=True, help="resume-document.json path.")
+    render.add_argument("--output", type=_path, help="PDF output path (default: resume.pdf beside document).")
+
+    inspect = commands.add_parser("inspect-pdf", help="Inspect an existing PDF independently.")
+    inspect.add_argument("--pdf", type=_path, required=True, help="PDF path.")
+    inspect.add_argument("--pages", type=int, default=2, choices=range(1, 7), metavar="1-6", help="Expected page count (default: 2).")
+    inspect.add_argument("--expected-name", default="", help="Optional candidate name expected in extracted PDF text.")
+    return parser
+
+
+def _request_from_generate(args: argparse.Namespace) -> RunRequest:
+    return RunRequest(
+        source_root=args.source,
+        company_ref=args.company,
+        role_ref=args.role,
+        jd=JdInput(text=args.jd_text, file=args.jd_file, url=args.jd_url),
+        output_mode=args.mode,
+        language=args.language,
+        target_pages=args.pages,
+        template=args.template,
+        output_root=args.output,
+        export_roadmap_handoff=args.export_roadmap_handoff,
+    )
+
+
+def _dispatch(args: argparse.Namespace, pipeline: Pipeline) -> PipelineResult | dict[str, Any]:
+    if args.command == "list-companies":
+        choices = pipeline.list_companies(args.source)
+        return {"operation": args.command, "companies": jsonable(choices), "count": len(choices)}
+    if args.command == "list-roles":
+        choices = pipeline.list_roles(args.source, args.company)
+        return {"operation": args.command, "roles": jsonable(choices), "count": len(choices)}
+    if args.command == "generate":
+        return pipeline.generate(_request_from_generate(args))
+    if args.command == "analyze-role":
+        return pipeline.analyze_role(RunRequest.model_validate(read_json(args.request)))
+    if args.command == "refresh-role":
+        return pipeline.refresh_role(args.role)
+    if args.command == "refresh-match":
+        return pipeline.refresh_match(args.role)
+    if args.command == "export-roadmap-handoff":
+        severities = [value.strip() for value in args.severity.split(",") if value.strip()]
+        return pipeline.export_roadmap_handoff(args.role, args.output, severities)
+    if args.command == "build-evidence-map":
+        return pipeline.build_evidence_map(args.run)
+    if args.command == "validate-content":
+        return pipeline.validate_content(args.run)
+    if args.command == "render":
+        return pipeline.render(args.document, args.output)
+    if args.command == "inspect-pdf":
+        return pipeline.inspect_pdf(args.pdf, pages=args.pages, expected_name=args.expected_name)
+    raise PipelineError(f"unsupported command: {args.command}")
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    parser = _parser()
+    try:
+        result = _dispatch(parser.parse_args(argv), Pipeline())
+        payload = result.model_dump(mode="json") if isinstance(result, PipelineResult) else jsonable(result)
+        print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
+        return 0
+    except SelectionRequired as exc:
+        print(json.dumps({"error": str(exc), "selection_required": True, "choices": jsonable(exc.choices)}, ensure_ascii=False, sort_keys=True), file=sys.stderr)
+        return 2
+    except (PipelineError, ValidationError, FileNotFoundError, NotADirectoryError, PermissionError, json.JSONDecodeError, UnicodeError, OSError, ValueError, KeyError) as exc:
+        print(json.dumps({"error": str(exc), "type": type(exc).__name__}, ensure_ascii=False, sort_keys=True), file=sys.stderr)
+        return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

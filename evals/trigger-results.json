@@ -1,0 +1,148 @@
+{
+  "skill_name": "china-targeted-resume",
+  "description": "Use this Skill whenever a user wants to turn a personal career knowledge base into an evidence-grounded master resume, public portfolio resume, or resume for a target company and role, even if they only mention choosing a company, an exact role, a JD, job fit, role research, refreshing stale role or evidence analysis, or handing confirmed gaps to a roadmap Skill. It discovers the source, builds or refreshes the seven-file role dossier, applies China recruiting context and strict evidence/privacy gates, generates and audits master/targeted/ATS resumes, and validates a local PDF. Trigger aggressively for candidate-side personal career evidence and resume or target-role work. Require an explicit request before roadmap handoff. Do not use for generic PDF conversion, recruiter-side candidate screening, or generic learning/onboarding/interest plans.",
+  "passed": 20,
+  "total": 20,
+  "cases": [
+    {
+      "query": "请从我的 Markdown 职业知识库 /data/career-db 里选出真实证据，针对宇树的 AI Infra 工程师生成两页中文简历、ATS 文本、provenance 和 PDF。",
+      "expected": true,
+      "actual": true,
+      "reason": "应调用 china-targeted-resume。该请求明确是候选人侧：从个人 Markdown 职业知识库中筛选真实证据，面向特定公司（宇树）和特定岗位（AI Infra 工程师）生成两页中文定向简历、ATS 文本、provenance 与 PDF；这正属于该 Skill 的证据约束型目标岗位简历及本地 PDF 产出范围，不是通用 PDF 转换、招聘方筛选、泛公司研究或学习计划。",
+      "passed": true
+    },
+    {
+      "query": "I have an exact C++ Systems Engineer title but the archived JD is incomplete. Use my personal career repository to make the best targeted application resume and explain source staleness in the audit.",
+      "expected": true,
+      "actual": true,
+      "reason": "Invoke the china-targeted-resume Skill. The request is explicitly candidate-side: it asks to use a personal career repository to produce a targeted application resume for an exact role. The incomplete archived JD and requested explanation of source staleness are directly covered by the Skill’s role-dossier refresh, evidence grounding, targeting, and audit scope. This is not generic PDF conversion, recruiter-side screening, standalone company research, UI building, or a generic learning plan.",
+      "passed": true
+    },
+    {
+      "query": "Analyze this current JD against my career knowledge base and create the seven-file role-research dossier, but keep it run-local until I approve persistence.",
+      "expected": true,
+      "actual": true,
+      "reason": "Invoke the china-targeted-resume Skill. The request is explicitly candidate-side: it asks to analyze a current job description against the user’s personal career knowledge base and create the seven-file role-research dossier. That directly matches the Skill’s target-role/JD analysis and dossier workflow. The request to keep outputs run-local until approval also aligns with controlled persistence and does not change the trigger decision.",
+      "passed": true
+    },
+    {
+      "query": "The official role page changed yesterday. Refresh only the changed role requirements and then refresh only affected personal evidence mappings in my role dossier.",
+      "expected": true,
+      "actual": true,
+      "reason": "Invoke the china-targeted-resume Skill. The request is explicitly about refreshing changed requirements from an official target-role page and updating only the affected personal-evidence mappings in the user’s role dossier. This is candidate-side target-role and career knowledge-base work, directly covered by the Skill metadata, rather than generic company research, PDF conversion, recruiter screening, UI building, or a learning plan.",
+      "passed": true
+    },
+    {
+      "query": "Use /home/me/career-notes to produce a public portfolio resume for a backend role; hide my phone, reject P2/P3 facts, and verify the local PDF links.",
+      "expected": true,
+      "actual": true,
+      "reason": "This is explicitly candidate-side resume work using a personal career knowledge base (/home/me/career-notes) to create a public portfolio resume for a backend role. The requested privacy/evidence controls (hide phone, reject P2/P3 facts) and local PDF link validation are directly covered by the Skill’s evidence/privacy gates and PDF audit scope; it is not generic PDF conversion, recruiter screening, generic company research, UI building, or a learning plan.",
+      "passed": true
+    },
+    {
+      "query": "Build a master resume from my Markdown career source of truth without pretending it targets a specific employer, and retain claim-level source references.",
+      "expected": true,
+      "actual": true,
+      "reason": "Invoke `china-targeted-resume`. The request is candidate-side resume work: converting a Markdown career source of truth into an evidence-grounded master resume while preserving claim-level source references. The metadata explicitly covers discovering a personal career knowledge base and generating a master resume without requiring a specific employer or role. It is not generic PDF conversion, recruiter-side screening, company research, UI building, or a generic learning plan.",
+      "passed": true
+    },
+    {
+      "query": "I want to apply to Company A's platform-engineering family but have not selected one opening. Generate a clearly labeled company-and-role-family draft from my personal evidence.",
+      "expected": true,
+      "actual": true,
+      "reason": "Invoke the Skill. This is a candidate-side request to use the user's personal career evidence to create a targeted resume draft for a specific company and role family, even though no exact opening has been selected. The metadata explicitly covers company-and-role-family targeting, source discovery, evidence/privacy gates, and generating targeted resumes. It is not generic PDF conversion, recruiter screening, software UI work, company research alone, or a generic learning plan.",
+      "passed": true
+    },
+    {
+      "query": "Export the confirmed Critical and Major gaps from this evidence mapping as roadmap-handoff.json for a separate learning-plan agent; do not alter my match states.",
+      "expected": true,
+      "actual": true,
+      "reason": "Invoke the china-targeted-resume Skill. The request concerns candidate-side evidence mapping and explicitly asks to hand confirmed Critical and Major gaps to a separate learning-plan agent as roadmap-handoff.json, while preserving existing match states. This is directly within the Skill’s roadmap-handoff scope, and the user has provided the required explicit handoff request.",
+      "passed": true
+    },
+    {
+      "query": "Audit my targeted resume against its owning Markdown files for F/P disclosure, contribution verbs, metric scope, ATS reading order, and PDF page limits.",
+      "expected": true,
+      "actual": true,
+      "reason": "Invoke the china-targeted-resume Skill. The request is explicitly candidate-side targeted-resume auditing against owning Markdown evidence, including F/P disclosure, contribution wording, metric scope, ATS reading order, and local PDF page-limit validation. These are core functions named in the Skill metadata, not generic PDF conversion, recruiter-side screening, company research, UI building, or a generic learning plan.",
+      "passed": true
+    },
+    {
+      "query": "我的知识库里有三家公司研究目录，请先列出公司和岗位让我选，再按选定岗位生成可追溯的投递简历。",
+      "expected": true,
+      "actual": true,
+      "reason": "应调用 china-targeted-resume。用户明确要求从个人知识库中的三家公司研究目录提取公司与岗位供其选择，并在选定后生成证据可追溯的投递简历；这正属于候选人侧的知识库岗位定向与 targeted resume 工作，不是通用公司研究、PDF 转换、招聘方筛选或学习计划。",
+      "passed": true
+    },
+    {
+      "query": "Convert report.html to a PDF with A4 margins and keep every hyperlink clickable.",
+      "expected": false,
+      "actual": false,
+      "reason": "This is generic HTML-to-PDF conversion with A4 margins and clickable hyperlinks. The Skill metadata explicitly excludes generic PDF conversion, and the query does not involve candidate-side career evidence, resume targeting, role research, or a roadmap handoff.",
+      "passed": true
+    },
+    {
+      "query": "We are recruiters. Rank 200 applicants for our Java role and produce a shortlist with match percentages.",
+      "expected": false,
+      "actual": false,
+      "reason": "Do not invoke this Skill. The request is recruiter-side bulk applicant screening and ranking, whereas the Skill is scoped to candidate-side career evidence, target-role research, and resume creation/auditing. Its metadata explicitly excludes recruiter-side candidate screening.",
+      "passed": true
+    },
+    {
+      "query": "Make me a 12-week Kubernetes learning path with courses, weekly milestones, and practice labs.",
+      "expected": false,
+      "actual": false,
+      "reason": "Do not invoke the china-targeted-resume Skill. The request is for a generic 12-week Kubernetes learning plan with courses, milestones, and labs. It does not involve a candidate career knowledge base, resume creation, target-company or target-role analysis, job-fit evidence, or an explicitly requested roadmap handoff from confirmed resume gaps.",
+      "passed": true
+    },
+    {
+      "query": "Create an onboarding curriculum for new backend engineers joining our payments team.",
+      "expected": false,
+      "actual": false,
+      "reason": "Do not invoke the Skill. The request is for a generic onboarding curriculum for new backend engineers on a payments team, which is a learning/onboarding plan—not candidate-side career evidence, resume creation, target-role analysis, or an explicitly requested roadmap handoff.",
+      "passed": true
+    },
+    {
+      "query": "Research Unitree Robotics products, funding, culture, and current engineering risks; I am not asking for candidate materials.",
+      "expected": false,
+      "actual": false,
+      "reason": "Do not invoke the china-targeted-resume Skill. The request is standalone company research on Unitree Robotics—products, funding, culture, and engineering risks—and explicitly excludes candidate materials. It does not involve a personal career knowledge base, resume creation, target-role fit, a JD, evidence-gap analysis, or roadmap handoff.",
+      "passed": true
+    },
+    {
+      "query": "Design a drag-and-drop web resume builder in Vue 3 with live theme editing and cloud accounts.",
+      "expected": false,
+      "actual": false,
+      "reason": "Do not invoke the Skill. The query asks for software/UI product design and implementation of a generic Vue 3 resume-builder application with drag-and-drop, theme editing, and cloud accounts. It does not ask to transform a candidate’s personal career knowledge base, research or target a role/company, create or audit an evidence-grounded resume, apply China recruiting context, or hand confirmed career gaps to a roadmap Skill.",
+      "passed": true
+    },
+    {
+      "query": "Extract name, email, education, and employers from these 500 uploaded resumes into a CSV for HR analytics.",
+      "expected": false,
+      "actual": false,
+      "reason": "Do not invoke this Skill. The request is recruiter-side bulk resume data extraction for HR analytics, not candidate-side career knowledge-base work, target-role research, or resume creation. It falls outside the Skill’s scope and aligns with its explicit recruiter-screening/generic document-processing exclusions.",
+      "passed": true
+    },
+    {
+      "query": "Compare Greenhouse, Lever, and Workday ATS products for a procurement decision.",
+      "expected": false,
+      "actual": false,
+      "reason": "The query is a buyer-side software procurement comparison of ATS products. It is not candidate-side career evidence, resume creation, target-role research, recruiter-side candidate screening, or roadmap handoff, so the china-targeted-resume Skill should not be invoked.",
+      "passed": true
+    },
+    {
+      "query": "Write a generic Senior Python Engineer job description for our careers page, including responsibilities and benefits.",
+      "expected": false,
+      "actual": false,
+      "reason": "This is a generic employer-side request to draft a careers-page job description. It does not involve candidate-side career evidence, a personal knowledge base, resume creation or targeting, target-role fit analysis, or roadmap handoff, so the china-targeted-resume Skill should not be invoked.",
+      "passed": true
+    },
+    {
+      "query": "Turn this short biography into a one-paragraph conference speaker introduction; there is no career knowledge base or target role.",
+      "expected": false,
+      "actual": false,
+      "reason": "Do not invoke the Skill. The request is generic biography editing into a conference speaker introduction, with no personal career knowledge base, resume deliverable, target company or role, JD analysis, evidence dossier, or roadmap handoff.",
+      "passed": true
+    }
+  ]
+}

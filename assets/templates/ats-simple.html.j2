@@ -1,0 +1,189 @@
+{% set template_id = template_id | default('ats-simple', true) %}
+{% set template_class = template_class | default('resume-document--ats-simple', true) %}
+{% set configured_body_font_pt = render_policy.minimum_body_font_pt | default(10, true) %}
+{% set configured_margin_mm = render_policy.minimum_margin_mm | default(12, true) %}
+{% set minimum_body_font_pt = configured_body_font_pt if configured_body_font_pt >= 10 else 10 %}
+{% set minimum_margin_mm = configured_margin_mm if configured_margin_mm >= 12 else 12 %}
+{% set current_date_endings = ['至今', 'Present', 'present', 'Current', 'current', 'Now', 'now'] %}
+{% macro date_range(start_date, end_date) -%}
+{% if start_date %}<time>{{ start_date }}</time>{% endif %}{% if start_date and end_date %}{% if end_date in current_date_endings %} {% else %} – {% endif %}{% endif %}{% if end_date %}<time>{{ end_date }}</time>{% endif %}
+{%- endmacro %}
+<!doctype html>
+<html lang="{{ locale | default('zh-CN', true) }}" data-template-id="{{ template_id }}" data-minimum-body-font-pt="{{ minimum_body_font_pt }}" data-minimum-margin-mm="{{ minimum_margin_mm }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow, noarchive">
+  <title>{{ contact.name }} | Resume</title>
+  <style data-resume-styles="embedded">
+{{ base_css | safe }}
+{{ theme_css | safe }}
+    :root {
+      --resume-body-font-size: {{ minimum_body_font_pt }}pt;
+    }
+
+    @page {
+      size: A4;
+      margin: {{ minimum_margin_mm }}mm;
+    }
+  </style>
+</head>
+<body>
+  <main class="resume-document {{ template_class }}" aria-label="Resume for {{ contact.name }}">
+    <header id="contact" class="resume-header" data-section-id="contact">
+      <h1 class="resume-name">{{ contact.name }}</h1>
+      {% if headline %}<p class="resume-headline">{{ headline }}</p>{% endif %}
+      <address aria-label="Contact details">
+        <ul class="contact-list">
+          {% if contact.phone %}
+          <li class="contact-item">
+            <span class="contact-label">Phone:</span>
+            <a href="tel:{{ contact.phone }}">{{ contact.phone }}</a>
+          </li>
+          {% endif %}
+          {% if contact.email %}
+          <li class="contact-item">
+            <span class="contact-label">Email:</span>
+            <a href="mailto:{{ contact.email }}">{{ contact.email }}</a>
+          </li>
+          {% endif %}
+          {% if contact.location %}
+          <li class="contact-item">
+            <span class="contact-label">Location:</span>
+            <span>{{ contact.location }}</span>
+          </li>
+          {% endif %}
+        </ul>
+      </address>
+    </header>
+
+    {% if summary %}
+    <section id="summary" class="resume-section" data-section-id="summary" aria-labelledby="summary-heading">
+      <h2 id="summary-heading" class="section-heading">Summary</h2>
+      <ul class="summary-list">
+        {% for item in summary %}<li class="summary-item">{{ item }}</li>{% endfor %}
+      </ul>
+    </section>
+    {% endif %}
+
+    {% if skills %}
+    <section id="skills" class="resume-section" data-section-id="skills" aria-labelledby="skills-heading">
+      <h2 id="skills-heading" class="section-heading">Skills</h2>
+      <dl class="skills-list">
+        {% for skill in skills %}
+        <div class="skill-group">
+          <dt class="skill-group__name">{{ skill.group }}:</dt>
+          <dd class="skill-group__items">{{ skill['items'] | join(', ') }}</dd>
+        </div>
+        {% endfor %}
+      </dl>
+    </section>
+    {% endif %}
+
+    {% if experience %}
+    <section id="experience" class="resume-section" data-section-id="experience" aria-labelledby="experience-heading">
+      <h2 id="experience-heading" class="section-heading">Experience</h2>
+      {% for entry in experience %}
+      <article class="resume-entry" data-entry-kind="experience">
+        <header class="entry-header">
+          <h3 class="entry-title">{{ entry.role }}</h3>
+          <p class="entry-subtitle">{{ entry.organization }}</p>
+          <p class="entry-meta">
+            <span class="entry-date">{{ date_range(entry.start_date, entry.end_date) }}</span>
+            {% if entry.location %}<span class="entry-location">{{ entry.location }}</span>{% endif %}
+          </p>
+        </header>
+        {% if entry.context %}<p class="entry-context">{{ entry.context }}</p>{% endif %}
+        {% if entry.bullets %}
+        <ul class="entry-bullets">
+          {% for bullet in entry.bullets %}<li>{{ bullet.text }}</li>{% endfor %}
+        </ul>
+        {% endif %}
+      </article>
+      {% endfor %}
+    </section>
+    {% endif %}
+
+    {% if projects %}
+    <section id="projects" class="resume-section" data-section-id="projects" aria-labelledby="projects-heading">
+      <h2 id="projects-heading" class="section-heading">Projects</h2>
+      {% for project in projects %}
+      <article class="resume-entry" data-entry-kind="project">
+        <header class="entry-header">
+          <h3 class="entry-title">{{ project.name }}</h3>
+          {% if project.role %}<p class="entry-subtitle">{{ project.role }}</p>{% endif %}
+          {% if project.start_date or project.end_date %}
+          <p class="entry-meta">
+            <span class="entry-date">{{ date_range(project.start_date, project.end_date) }}</span>
+          </p>
+          {% endif %}
+        </header>
+        {% if project.context %}<p class="entry-context">{{ project.context }}</p>{% endif %}
+        {% if project.technologies %}<p class="entry-technologies"><span class="field-label">Technologies:</span> {{ project.technologies | join(', ') }}</p>{% endif %}
+        {% if project.bullets %}
+        <ul class="entry-bullets">
+          {% for bullet in project.bullets %}<li>{{ bullet.text }}</li>{% endfor %}
+        </ul>
+        {% endif %}
+      </article>
+      {% endfor %}
+    </section>
+    {% endif %}
+
+    {% if education %}
+    <section id="education" class="resume-section" data-section-id="education" aria-labelledby="education-heading">
+      <h2 id="education-heading" class="section-heading">Education</h2>
+      {% for entry in education %}
+      <article class="resume-entry" data-entry-kind="education">
+        <header class="entry-header">
+          <h3 class="entry-title">{{ entry.institution }}</h3>
+          {% if entry.degree or entry.field %}
+          <p class="entry-subtitle">
+            {% if entry.degree %}{{ entry.degree }}{% endif %}{% if entry.degree and entry.field %}, {% endif %}{% if entry.field %}{{ entry.field }}{% endif %}
+          </p>
+          {% endif %}
+          {% if entry.start_date or entry.end_date %}
+          <p class="entry-meta">
+            <span class="entry-date">{{ date_range(entry.start_date, entry.end_date) }}</span>
+          </p>
+          {% endif %}
+        </header>
+        {% if entry.details %}
+        <ul class="entry-detail-list">
+          {% for detail in entry.details %}<li>{{ detail }}</li>{% endfor %}
+        </ul>
+        {% endif %}
+      </article>
+      {% endfor %}
+    </section>
+    {% endif %}
+
+    {% if honors %}
+    <section id="honors" class="resume-section" data-section-id="honors" aria-labelledby="honors-heading">
+      <h2 id="honors-heading" class="section-heading">Honors</h2>
+      {% for honor in honors %}
+      <article class="resume-entry" data-entry-kind="honor">
+        <header class="entry-header">
+          <h3 class="entry-title">{{ honor.name }}</h3>
+          {% if honor.issuer %}<p class="entry-subtitle">{{ honor.issuer }}</p>{% endif %}
+          {% if honor.date %}<p class="entry-meta"><span class="entry-date"><time>{{ honor.date }}</time></span></p>{% endif %}
+        </header>
+        {% if honor.details %}<p class="entry-details">{{ honor.details }}</p>{% endif %}
+      </article>
+      {% endfor %}
+    </section>
+    {% endif %}
+
+    {% if contact.links %}
+    <section id="links" class="resume-section" data-section-id="links" aria-labelledby="links-heading">
+      <h2 id="links-heading" class="section-heading">Links</h2>
+      <ul class="link-list">
+        {% for link in contact.links %}
+        <li class="link-item"><a href="{{ link.url }}"><span class="link-label">{{ link.label }}</span> <span class="link-url">({{ link.url }})</span></a></li>
+        {% endfor %}
+      </ul>
+    </section>
+    {% endif %}
+  </main>
+</body>
+</html>

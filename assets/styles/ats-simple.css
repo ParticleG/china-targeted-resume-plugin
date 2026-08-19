@@ -1,0 +1,32 @@
+:root {
+  --color-paper: #fcfcfa;
+  --color-ink: #202327;
+  --color-muted: #4e555d;
+  --color-rule: #9ea5ad;
+  --color-accent: #202327;
+  --color-soft: #f2f3f2;
+  --text-section: 1.12rem;
+  --text-name: 1.72rem;
+}
+
+.resume-document--ats-simple .resume-header {
+  padding-block-end: var(--space-3);
+  border-block-end: var(--line-thin) solid var(--color-rule);
+}
+
+.resume-document--ats-simple .resume-headline {
+  color: var(--color-ink);
+}
+
+.resume-document--ats-simple .section-heading {
+  padding-block-end: var(--space-1);
+  border-block-end: var(--line-thin) solid var(--color-rule);
+}
+
+.resume-document--ats-simple .entry-title {
+  font-weight: var(--weight-bold);
+}
+
+.resume-document--ats-simple .entry-context {
+  color: var(--color-muted);
+}

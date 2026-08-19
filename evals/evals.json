@@ -1,0 +1,52 @@
+{
+  "skill_name": "china-targeted-resume",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Use the synthetic career knowledge base in tests/fixtures/synthetic-career-db to generate a two-page zh-CN targeted application resume for Acme Cloudworks' exact Platform Engineer role using its complete current JD. The fixture README documents one deliberate traversal probe: work from a private temporary copy with only that probe removed, and do not weaken path validation. Save the complete run artifacts in the requested outputs directory.",
+      "expected_output": "A Tier A run with a complete seven-file dossier, evidence-grounded resume artifacts, provenance, audits, a maximum two-page PDF, preview, and no source mutation or sensitive fixture claims.",
+      "files": [
+        "tests/fixtures/synthetic-career-db"
+      ],
+      "expectations": [
+        "target-context.json uses target_basis exact-current-jd and complete JD metadata.",
+        "Every evidence mapping uses one exact canonical Chinese match-state value and all visible claims have provenance.",
+        "F4, F5, F6, and P3 fixture material is absent from visible resume outputs; P2 remains target-scoped.",
+        "The seven role-dossier files respect their owning boundaries and only job-description.md owns the complete JD inside the dossier.",
+        "resume.pdf is at most two pages and passes text, CJK, link, font-handling, reading-order, margin, and preview checks.",
+        "The source fixture is unchanged and every generated directory/file uses 0700/0600 permissions."
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Using a private temporary copy of tests/fixtures/synthetic-career-db with its documented traversal probe removed, generate a two-page human-readable application resume for Clockwork Capybara Robotics' exact Robotics Platform Engineer role. No complete current JD is available; use only the old partial hiring evidence and keep every limitation explicit in audit artifacts. Save the complete run in the requested outputs directory.",
+      "expected_output": "A non-blocking Tier B run with partial/stale source metadata, null explicit coverage, inferred requirements separated from hard gates, targeted resume/PDF artifacts, and privacy/provenance validation.",
+      "files": [
+        "tests/fixtures/synthetic-career-db"
+      ],
+      "expectations": [
+        "target-context.json uses exact-role-partial-evidence and explicit_requirement_coverage is null.",
+        "The audit records missing/current-JD and staleness limitations while generation still succeeds.",
+        "No inferred requirement becomes a hard gate and no robotics experience is invented from transferable systems evidence.",
+        "The application recommendation is multidimensional and contains no fixed 70/30 formula or unsupported hiring probability.",
+        "resume.pdf and resume-preview.png pass the requested two-page deterministic validation contract.",
+        "roadmap-handoff.json is absent because no roadmap handoff was requested."
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Analyze the Acme Cloudworks Platform Engineer role against tests/fixtures/synthetic-career-db, keep the seven-file dossier run-local, and explicitly export only confirmed Critical or Major gaps as roadmap-handoff.json. Do not create a learning plan and do not change any current match state. Use a private temporary fixture copy with the documented traversal probe removed and save outputs in the requested directory.",
+      "expected_output": "A run-local role analysis plus an explicit one-way roadmap handoff containing only worthwhile confirmed gaps, with pending and low-value Preferred items excluded.",
+      "files": [
+        "tests/fixtures/synthetic-career-db"
+      ],
+      "expectations": [
+        "Exactly seven role-dossier Markdown files are generated run-locally with no source-repository write.",
+        "roadmap-handoff.json exists only because the prompt explicitly requested it.",
+        "The handoff excludes 待确认 and low-value Preferred gaps and uses only Critical or Major severity.",
+        "The handoff does not modify evidence-map.json match states or treat growth-roadmap content as evidence.",
+        "All handoff items retain source role refs, baseline evidence refs, target capability, artifacts, and verification signals."
+      ]
+    }
+  ]
+}

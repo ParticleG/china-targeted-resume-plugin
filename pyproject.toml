@@ -1,0 +1,45 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "china-targeted-resume"
+version = "0.1.0"
+description = "Build evidence-grounded resumes targeted to roles in China."
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+  "jinja2>=3.1,<4",
+  "markdown-it-py>=4,<5",
+  "playwright>=1.55,<2",
+  "pydantic>=2.11,<3",
+  "pymupdf>=1.26,<2",
+]
+
+[project.scripts]
+china-targeted-resume = "china_targeted_resume.cli:main"
+
+[dependency-groups]
+dev = [
+  "coverage[toml]>=7.10,<8",
+  "pytest>=8.4,<9",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/china_targeted_resume"]
+
+[tool.hatch.build.targets.wheel.force-include]
+assets = "assets"
+
+[tool.hatch.build.targets.sdist]
+include = [
+  "/SKILL.md",
+  "/README.md",
+  "/assets",
+  "/pyproject.toml",
+  "/references",
+  "/schemas",
+  "/scripts",
+  "/src",
+  "/uv.lock",
+]

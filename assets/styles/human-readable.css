@@ -1,0 +1,52 @@
+:root {
+  --color-paper: #fbfcfa;
+  --color-ink: #1f2a33;
+  --color-muted: #4b5964;
+  --color-rule: #b8c1c8;
+  --color-accent: #234b68;
+  --color-soft: #edf2f4;
+  --text-section: 1.2rem;
+  --text-name: 2rem;
+}
+
+.resume-document--human-readable .resume-header {
+  padding-block-end: var(--space-4);
+  border-block-end: var(--line-focus) solid var(--color-accent);
+}
+
+.resume-document--human-readable .resume-headline {
+  font-size: var(--text-section);
+}
+
+.resume-document--human-readable .contact-list {
+  row-gap: var(--space-2);
+}
+
+.resume-document--human-readable .section-heading {
+  padding-inline-start: var(--space-2);
+  border-inline-start: var(--space-1) solid var(--color-accent);
+  color: var(--color-accent);
+}
+
+.resume-document--human-readable .entry-header {
+  display: block;
+}
+
+.resume-document--human-readable .entry-meta {
+  justify-content: flex-start;
+  text-align: start;
+}
+
+.resume-document--human-readable .entry-context {
+  padding-inline-start: var(--space-2);
+  border-inline-start: var(--line-thin) solid var(--color-rule);
+}
+
+.resume-document--human-readable .skill-group__name {
+  color: var(--color-accent);
+}
+
+.resume-document--human-readable .link-list {
+  display: grid;
+  row-gap: var(--space-1);
+}

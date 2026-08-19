@@ -1,0 +1,82 @@
+[
+  {
+    "query": "请从我的 Markdown 职业知识库 /data/career-db 里选出真实证据，针对宇树的 AI Infra 工程师生成两页中文简历、ATS 文本、provenance 和 PDF。",
+    "should_trigger": true
+  },
+  {
+    "query": "I have an exact C++ Systems Engineer title but the archived JD is incomplete. Use my personal career repository to make the best targeted application resume and explain source staleness in the audit.",
+    "should_trigger": true
+  },
+  {
+    "query": "Analyze this current JD against my career knowledge base and create the seven-file role-research dossier, but keep it run-local until I approve persistence.",
+    "should_trigger": true
+  },
+  {
+    "query": "The official role page changed yesterday. Refresh only the changed role requirements and then refresh only affected personal evidence mappings in my role dossier.",
+    "should_trigger": true
+  },
+  {
+    "query": "Use /home/me/career-notes to produce a public portfolio resume for a backend role; hide my phone, reject P2/P3 facts, and verify the local PDF links.",
+    "should_trigger": true
+  },
+  {
+    "query": "Build a master resume from my Markdown career source of truth without pretending it targets a specific employer, and retain claim-level source references.",
+    "should_trigger": true
+  },
+  {
+    "query": "I want to apply to Company A's platform-engineering family but have not selected one opening. Generate a clearly labeled company-and-role-family draft from my personal evidence.",
+    "should_trigger": true
+  },
+  {
+    "query": "Export the confirmed Critical and Major gaps from this evidence mapping as roadmap-handoff.json for a separate learning-plan agent; do not alter my match states.",
+    "should_trigger": true
+  },
+  {
+    "query": "Audit my targeted resume against its owning Markdown files for F/P disclosure, contribution verbs, metric scope, ATS reading order, and PDF page limits.",
+    "should_trigger": true
+  },
+  {
+    "query": "我的知识库里有三家公司研究目录，请先列出公司和岗位让我选，再按选定岗位生成可追溯的投递简历。",
+    "should_trigger": true
+  },
+  {
+    "query": "Convert report.html to a PDF with A4 margins and keep every hyperlink clickable.",
+    "should_trigger": false
+  },
+  {
+    "query": "We are recruiters. Rank 200 applicants for our Java role and produce a shortlist with match percentages.",
+    "should_trigger": false
+  },
+  {
+    "query": "Make me a 12-week Kubernetes learning path with courses, weekly milestones, and practice labs.",
+    "should_trigger": false
+  },
+  {
+    "query": "Create an onboarding curriculum for new backend engineers joining our payments team.",
+    "should_trigger": false
+  },
+  {
+    "query": "Research Unitree Robotics products, funding, culture, and current engineering risks; I am not asking for candidate materials.",
+    "should_trigger": false
+  },
+  {
+    "query": "Design a drag-and-drop web resume builder in Vue 3 with live theme editing and cloud accounts.",
+    "should_trigger": false
+  },
+  {
+    "query": "Extract name, email, education, and employers from these 500 uploaded resumes into a CSV for HR analytics.",
+    "should_trigger": false
+  },
+  {
+    "query": "Compare Greenhouse, Lever, and Workday ATS products for a procurement decision.",
+    "should_trigger": false
+  },
+  {
+    "query": "Write a generic Senior Python Engineer job description for our careers page, including responsibilities and benefits.",
+    "should_trigger": false
+  },
+  {
+    "query": "Turn this short biography into a one-paragraph conference speaker introduction; there is no career knowledge base or target role.",
+    "should_trigger": false
+  }
+]
