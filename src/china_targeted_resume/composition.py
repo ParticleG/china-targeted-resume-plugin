@@ -8,7 +8,7 @@ import json
 import re
 from typing import Any, Iterable, Mapping, Sequence
 
-from china_targeted_resume.models import ResumeDocument
+from china_targeted_resume.models import ResumeDocument, ResumeVariant
 
 _BLOCKED_FACT_STATES = frozenset({"F4", "F5", "F6"})
 _DIRECTNESS = {"已有直接证据": 5, "可迁移经验": 4, "有知识无实践": 2, "明确缺口": 0, "待确认": 0}
@@ -70,6 +70,16 @@ _PREDICATE_OPTIONAL_SECTION_MARKERS = (
     "engineering and verification",
     "工程化与验证",
 )
+_RESUME_CONTEXT_SECTION_MARKERS = (
+    "overview",
+    "background",
+    "project positioning",
+    "project context",
+    "概览",
+    "背景与目标",
+    "项目定位",
+    "项目背景",
+)
 _NON_RESUME_FIELD_LABEL = re.compile(
     r"^(?:(?:project (?:nature|positioning|scope|phase|date)|"
     r"(?:responsibility|role|team) scope|personal contribution|archive goal|"
@@ -86,9 +96,9 @@ _EVIDENCE_BOUNDARY_LANGUAGE = re.compile(
     r"(?:must|do)\s+not\s+(?:infer|claim|describe)|"
     r"cannot\s+(?:prove|establish|replace|be\s+claimed)|not\s+evidence\s+of)|"
     r"(?:当前\s*checkout|不据此(?:声明|推断)|只能证明|不证明|不实现|"
-    r"不计入(?:已交付|交付能力)|不归为|不表述为|"
-    r"不得(?:据此|描述|推断|声明)|不能(?:据此|证明|替代)|"
-    r"不自动(?:代表|证明))",
+    r"不计入(?:已交付|交付能力)|不把[^。；;\n]{0,80}计为|不归为|不表述为|"
+    r"不得(?:据此|描述|推断|声明)|不能(?:据此|证明|替代|声称)|"
+    r"不自动(?:代表|证明)|不(?:等同于|代表|表示|视为))",
     re.I,
 )
 _ACTION_PREDICATE = re.compile(
@@ -264,6 +274,40 @@ def resume_claim_is_substantive(
 ) -> bool:
     """Return whether evidence is suitable as a standalone resume fact."""
     return resume_claim_priority(record, text=text) is not None
+
+def resume_context_is_substantive(
+    record: Any,
+    *,
+    text: str | None = None,
+) -> bool:
+    """Allow source-backed project context without admitting it as a bullet."""
+    source = _source(record)
+    path = (
+        "/"
+        + str(source.get("path") or "")
+        .replace("\\", "/")
+        .casefold()
+        .strip("/")
+        + "/"
+    )
+    section = str(source.get("section") or "").casefold().strip()
+    claim = str(
+        text if text is not None else _get(record, "safe_claim", default="")
+    ).strip()
+    if (
+        not claim
+        or "/personal-data/meta/" in path
+        or not any(marker in section for marker in _RESUME_CONTEXT_SECTION_MARKERS)
+        or len(claim) < 12
+        or len(claim) > 280
+        or claim.endswith((":", "："))
+        or contains_placeholder(claim)
+        or re.search(r"[\u2500-\u257f]", claim)
+        or _NON_RESUME_FIELD_LABEL.search(claim)
+        or _EVIDENCE_BOUNDARY_LANGUAGE.search(claim)
+    ):
+        return False
+    return True
 
 
 def _freshness(record: Any, now: datetime | None) -> int:
@@ -482,9 +526,23 @@ def _add_fact_ledger(profile: Any, target: Mapping[str, Any], payload: Mapping[s
 
 
 
-def build_resume_document(candidate_profile: Any, target_context: Any, evidence_records: Sequence[Any], mappings: Sequence[Any] = (), requirements: Sequence[Any] = (), *, mode: Any = "targeted_application", locale: str = "zh-CN", target_pages: int = 2, template: str = "ats-simple") -> ResumeDocument:
+def build_resume_document(
+    candidate_profile: Any,
+    target_context: Any,
+    evidence_records: Sequence[Any],
+    mappings: Sequence[Any] = (),
+    requirements: Sequence[Any] = (),
+    *,
+    mode: Any = "targeted_application",
+    locale: str = "zh-CN",
+    variant: Any = ResumeVariant.TECHNICAL_TWO_PAGE,
+    target_pages: int = 2,
+    minimum_pages: int = 1,
+    template: str = "ats-simple",
+) -> ResumeDocument:
     """Build a resume. Target context affects selection/order, never claim text."""
     mode_value = _mode(mode)
+    variant_value = str(getattr(variant, "value", variant))
     ranked = rank_evidence(evidence_records, mappings=mappings, requirements=requirements, mode=mode_value)
     refs: list[str] = []
     assigned: set[str] = set()
@@ -501,6 +559,7 @@ def build_resume_document(candidate_profile: Any, target_context: Any, evidence_
     allowed_ids = {str(_get(record, "evidence_id")) for record in ranked}
     payload = {
         "schema_version": 1, "locale": locale,
+        "variant": variant_value,
         "target": {"company": target.get("company"), "role": target.get("role"), "target_basis": str(getattr(target.get("target_basis"), "value", target.get("target_basis") or "insufficient-target"))},
         "contact": _contact(candidate_profile, mode_value), "headline": headline,
         "summary": [
@@ -512,7 +571,17 @@ def build_resume_document(candidate_profile: Any, target_context: Any, evidence_
         "experience": experience, "projects": projects,
         "education": _provenanced_metadata(candidate_profile, "education", refs),
         "honors": _provenanced_metadata(candidate_profile, "honors", refs),
-        "render_policy": {"target_pages": max(1, int(target_pages)), "template": template, "minimum_body_font_pt": 10.0, "minimum_margin_mm": 12.0},
+        "render_policy": {
+            "target_pages": max(1, int(target_pages)),
+            "minimum_pages": max(1, int(minimum_pages)),
+            "template": template,
+            "minimum_body_font_pt": (
+                12.5
+                if variant_value == ResumeVariant.EXTENDED_THREE_PAGE.value
+                else 10.0
+            ),
+            "minimum_margin_mm": 12.0,
+        },
         "provenance_refs": [],
     }
     payload["provenance_refs"] = list(dict.fromkeys(refs))

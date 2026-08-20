@@ -29,7 +29,7 @@
   </style>
 </head>
 <body>
-  <main class="resume-document {{ template_class }}" aria-label="Resume for {{ contact.name }}">
+  <main class="resume-document {{ template_class }}" data-resume-variant="{{ variant }}" aria-label="Resume for {{ contact.name }}">
     <header id="contact" class="resume-header" data-section-id="contact">
       <h1 class="resume-name">{{ contact.name }}</h1>
       {% if headline %}<p class="resume-headline">{{ headline }}</p>{% endif %}

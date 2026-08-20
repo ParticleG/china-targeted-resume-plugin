@@ -15,7 +15,7 @@
     "application_constraints": {"oneOf": [{"type": "object"}, {"type": "array", "items": {"type": "object"}}], "default": {}},
     "output_mode": {"enum": ["targeted_application", "public_portfolio", "master_resume"], "default": "targeted_application"},
     "language": {"type": "string", "default": "zh-CN"},
-    "target_pages": {"type": "integer", "minimum": 1, "maximum": 6, "default": 2},
+    "include_extended_profile": {"type": "boolean", "default": false},
     "template": {"enum": ["ats-simple", "human-readable"], "default": "ats-simple"},
     "persist_role_research": {"type": "boolean", "default": false},
     "export_roadmap_handoff": {"type": "boolean", "default": false},

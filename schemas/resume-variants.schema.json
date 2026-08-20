@@ -1,0 +1,282 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.local/china-targeted-resume/resume-variants.schema.json",
+  "title": "ResumeVariantsManifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "variants"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "variants": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 3,
+      "prefixItems": [
+        {"$ref": "#/$defs/recruiter"},
+        {"$ref": "#/$defs/technical"},
+        {"$ref": "#/$defs/extended"}
+      ],
+      "items": false
+    }
+  },
+  "$defs": {
+    "record": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "variant",
+        "base_name",
+        "target_pages",
+        "actual_pages",
+        "underfilled",
+        "visible_claims",
+        "audit_success",
+        "pdf_success",
+        "artifacts",
+        "previews"
+      ],
+      "properties": {
+        "variant": {"type": "string"},
+        "base_name": {"type": "string"},
+        "target_pages": {"type": "integer"},
+        "actual_pages": {"type": "integer", "minimum": 1, "maximum": 6},
+        "underfilled": {"type": "boolean"},
+        "visible_claims": {"type": "integer", "minimum": 0},
+        "audit_success": {"type": "boolean"},
+        "pdf_success": {"type": "boolean"},
+        "artifacts": {"type": "object"},
+        "previews": {"type": "array"}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"actual_pages": {"const": 1}}},
+          "then": {"properties": {"previews": {"minItems": 1, "maxItems": 1}}}
+        },
+        {
+          "if": {"properties": {"actual_pages": {"const": 2}}},
+          "then": {"properties": {"previews": {"minItems": 2, "maxItems": 2}}}
+        },
+        {
+          "if": {"properties": {"actual_pages": {"const": 3}}},
+          "then": {"properties": {"previews": {"minItems": 3, "maxItems": 3}}}
+        },
+        {
+          "if": {"properties": {"actual_pages": {"const": 4}}},
+          "then": {"properties": {"previews": {"minItems": 4, "maxItems": 4}}}
+        },
+        {
+          "if": {"properties": {"actual_pages": {"const": 5}}},
+          "then": {"properties": {"previews": {"minItems": 5, "maxItems": 5}}}
+        },
+        {
+          "if": {"properties": {"actual_pages": {"const": 6}}},
+          "then": {"properties": {"previews": {"minItems": 6, "maxItems": 6}}}
+        }
+      ]
+    },
+    "recruiter": {
+      "allOf": [
+        {"$ref": "#/$defs/record"},
+        {
+          "properties": {
+            "variant": {"const": "recruiter-one-page"},
+            "base_name": {"const": "resume-recruiter-1p"},
+            "target_pages": {"const": 1},
+            "actual_pages": {"type": "integer"},
+            "artifacts": {"$ref": "#/$defs/recruiterArtifacts"},
+            "previews": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 6,
+              "uniqueItems": true,
+              "prefixItems": [
+                {"const": "resume-recruiter-1p.preview.png"},
+                {"const": "resume-recruiter-1p.preview-2.png"},
+                {"const": "resume-recruiter-1p.preview-3.png"},
+                {"const": "resume-recruiter-1p.preview-4.png"},
+                {"const": "resume-recruiter-1p.preview-5.png"},
+                {"const": "resume-recruiter-1p.preview-6.png"}
+              ],
+              "items": false
+            }
+          }
+        },
+        {
+          "if": {"properties": {"visible_claims": {"maximum": 5}}},
+          "then": {"properties": {"underfilled": {"const": true}}},
+          "else": {"properties": {"underfilled": {"const": false}}}
+        },
+        {
+          "if": {"properties": {"pdf_success": {"const": true}}},
+          "then": {"properties": {"actual_pages": {"maximum": 1}}}
+        },
+        {
+          "if": {
+            "properties": {
+              "pdf_success": {"const": true},
+              "underfilled": {"const": false}
+            }
+          },
+          "then": {"properties": {"actual_pages": {"const": 1}}}
+        }
+      ]
+    },
+    "technical": {
+      "allOf": [
+        {"$ref": "#/$defs/record"},
+        {
+          "properties": {
+            "variant": {"const": "technical-two-page"},
+            "base_name": {"const": "resume-technical-2p"},
+            "target_pages": {"const": 2},
+            "actual_pages": {"type": "integer"},
+            "artifacts": {"$ref": "#/$defs/technicalArtifacts"},
+            "previews": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 6,
+              "uniqueItems": true,
+              "prefixItems": [
+                {"const": "resume-technical-2p.preview.png"},
+                {"const": "resume-technical-2p.preview-2.png"},
+                {"const": "resume-technical-2p.preview-3.png"},
+                {"const": "resume-technical-2p.preview-4.png"},
+                {"const": "resume-technical-2p.preview-5.png"},
+                {"const": "resume-technical-2p.preview-6.png"}
+              ],
+              "items": false
+            }
+          }
+        },
+        {
+          "if": {"properties": {"visible_claims": {"maximum": 11}}},
+          "then": {"properties": {"underfilled": {"const": true}}},
+          "else": {"properties": {"underfilled": {"const": false}}}
+        },
+        {
+          "if": {"properties": {"pdf_success": {"const": true}}},
+          "then": {"properties": {"actual_pages": {"maximum": 2}}}
+        },
+        {
+          "if": {
+            "properties": {
+              "pdf_success": {"const": true},
+              "underfilled": {"const": false}
+            }
+          },
+          "then": {"properties": {"actual_pages": {"const": 2}}}
+        }
+      ]
+    },
+    "extended": {
+      "allOf": [
+        {"$ref": "#/$defs/record"},
+        {
+          "properties": {
+            "variant": {"const": "extended-three-page"},
+            "base_name": {"const": "technical-profile-3p"},
+            "target_pages": {"const": 3},
+            "actual_pages": {"type": "integer"},
+            "artifacts": {"$ref": "#/$defs/extendedArtifacts"},
+            "previews": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 6,
+              "uniqueItems": true,
+              "prefixItems": [
+                {"const": "technical-profile-3p.preview.png"},
+                {"const": "technical-profile-3p.preview-2.png"},
+                {"const": "technical-profile-3p.preview-3.png"},
+                {"const": "technical-profile-3p.preview-4.png"},
+                {"const": "technical-profile-3p.preview-5.png"},
+                {"const": "technical-profile-3p.preview-6.png"}
+              ],
+              "items": false
+            }
+          }
+        },
+        {
+          "if": {"properties": {"visible_claims": {"maximum": 17}}},
+          "then": {"properties": {"underfilled": {"const": true}}},
+          "else": {"properties": {"underfilled": {"const": false}}}
+        },
+        {
+          "if": {"properties": {"pdf_success": {"const": true}}},
+          "then": {"properties": {"actual_pages": {"maximum": 3}}}
+        },
+        {
+          "if": {
+            "properties": {
+              "pdf_success": {"const": true},
+              "underfilled": {"const": false}
+            }
+          },
+          "then": {"properties": {"actual_pages": {"const": 3}}}
+        }
+      ]
+    },
+    "recruiterArtifacts": {
+      "$ref": "#/$defs/artifactRecord",
+      "properties": {
+        "document": {"const": "resume-recruiter-1p.document.json"},
+        "provenance": {"const": "resume-recruiter-1p.provenance.json"},
+        "validation": {"const": "resume-recruiter-1p.validation.json"},
+        "audit": {"const": "resume-recruiter-1p.audit.md"},
+        "markdown": {"const": "resume-recruiter-1p.md"},
+        "ats_text": {"const": "resume-recruiter-1p.txt"},
+        "html": {"const": "resume-recruiter-1p.html"},
+        "pdf": {"const": "resume-recruiter-1p.pdf"}
+      }
+    },
+    "technicalArtifacts": {
+      "$ref": "#/$defs/artifactRecord",
+      "properties": {
+        "document": {"const": "resume-technical-2p.document.json"},
+        "provenance": {"const": "resume-technical-2p.provenance.json"},
+        "validation": {"const": "resume-technical-2p.validation.json"},
+        "audit": {"const": "resume-technical-2p.audit.md"},
+        "markdown": {"const": "resume-technical-2p.md"},
+        "ats_text": {"const": "resume-technical-2p.txt"},
+        "html": {"const": "resume-technical-2p.html"},
+        "pdf": {"const": "resume-technical-2p.pdf"}
+      }
+    },
+    "extendedArtifacts": {
+      "$ref": "#/$defs/artifactRecord",
+      "properties": {
+        "document": {"const": "technical-profile-3p.document.json"},
+        "provenance": {"const": "technical-profile-3p.provenance.json"},
+        "validation": {"const": "technical-profile-3p.validation.json"},
+        "audit": {"const": "technical-profile-3p.audit.md"},
+        "markdown": {"const": "technical-profile-3p.md"},
+        "ats_text": {"const": "technical-profile-3p.txt"},
+        "html": {"const": "technical-profile-3p.html"},
+        "pdf": {"const": "technical-profile-3p.pdf"}
+      }
+    },
+    "artifactRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "document",
+        "provenance",
+        "validation",
+        "audit",
+        "markdown",
+        "ats_text",
+        "html",
+        "pdf"
+      ],
+      "properties": {
+        "document": {"type": "string"},
+        "provenance": {"type": "string"},
+        "validation": {"type": "string"},
+        "audit": {"type": "string"},
+        "markdown": {"type": "string"},
+        "ats_text": {"type": "string"},
+        "html": {"type": "string"},
+        "pdf": {"type": "string"}
+      }
+    }
+  }
+}

@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 import json
 
 
+from china_targeted_resume.adapters.markdown_career_v1 import MarkdownCareerV1Adapter
 from china_targeted_resume.audit import (
     audit_ats,
     audit_hr,
@@ -22,9 +23,14 @@ from china_targeted_resume.composition import (
     render_ats_text,
     render_targeted_markdown,
 )
-from china_targeted_resume.models import EvidenceRecord, OutputMode
+from china_targeted_resume.models import EvidenceRecord, OutputMode, ResumeVariant
 from china_targeted_resume.provenance import build_confirmation_questions
-from china_targeted_resume.pipeline import _select_resume_records
+from china_targeted_resume.pipeline import (
+    _EXTENDED_THREE_PAGE,
+    _RECRUITER_ONE_PAGE,
+    _select_resume_records,
+    _select_variant_records,
+)
 
 
 PROFILE_REF = "personal-data/profile/identity.md#identity@profilehash"
@@ -151,6 +157,7 @@ def test_disclosure_and_fact_state_matrix_is_fail_closed_and_p2_is_targeted_only
     targeted_text = render_ats_text(targeted)
     portfolio_text = render_ats_text(portfolio)
 
+
     assert records[0].safe_claim in targeted_text and records[0].safe_claim in portfolio_text
     assert records[4].safe_claim in targeted_text and records[4].safe_claim not in portfolio_text
     for record in (records[1], records[2], records[3], records[5]):
@@ -164,6 +171,77 @@ def test_disclosure_and_fact_state_matrix_is_fail_closed_and_p2_is_targeted_only
     assert records[2].safe_claim in questions
     assert records[3].safe_claim not in questions
     assert records[5].safe_claim not in questions
+
+
+def test_extended_profile_uses_readable_body_type() -> None:
+    document = build_resume_document(
+        _profile(),
+        _target(),
+        [_evidence("ev-platform", "Personally automated release controls.")],
+        variant=ResumeVariant.EXTENDED_THREE_PAGE,
+        target_pages=3,
+    )
+
+    assert document.render_policy.minimum_body_font_pt == 12.5
+
+
+def test_project_context_warning_is_variant_aware_and_reported_once() -> None:
+    records = [
+        _evidence(
+            f"ev-project-{index}",
+            f"Implemented verified project capability {index}.",
+            source_path="personal-data/company-projects/platform.md",
+            source_section="Personal work",
+        )
+        for index in range(2)
+    ]
+    profile = _profile()
+    profile["projects"] = [
+        {
+            "name": "Platform project",
+            "evidence_ids": [record.evidence_id for record in records],
+            "source_refs": ["personal-data/company-projects/platform.md"],
+        }
+    ]
+    technical = build_resume_document(
+        profile,
+        _target(),
+        records,
+        variant=ResumeVariant.TECHNICAL_TWO_PAGE,
+    )
+    recruiter = build_resume_document(
+        profile,
+        _target(),
+        records,
+        variant=ResumeVariant.RECRUITER_ONE_PAGE,
+        target_pages=1,
+    )
+
+    technical_context_warnings = [
+        warning
+        for warning in audit_technical(technical, records).warnings
+        if "technical.project_context" in warning
+    ]
+    recruiter_context_warnings = [
+        warning
+        for warning in audit_technical(recruiter, records).warnings
+        if "technical.project_context" in warning
+    ]
+
+    assert len(technical_context_warnings) == 1
+    assert recruiter_context_warnings == []
+
+
+def test_extended_selection_budget_cannot_exceed_density_ceiling() -> None:
+    maximum_selected_claims = (
+        _EXTENDED_THREE_PAGE.work_bullets
+        + _EXTENDED_THREE_PAGE.project_limit
+        * _EXTENDED_THREE_PAGE.project_bullets
+    )
+
+    assert maximum_selected_claims <= (
+        _EXTENDED_THREE_PAGE.target_pages * 10
+    )
 
 
 def test_stale_dynamic_evidence_and_placeholder_claims_are_omitted() -> None:
@@ -237,7 +315,7 @@ def test_every_visible_fact_has_provenance_and_company_research_is_rejected_as_p
     assert any("company_research_fact" in error for error in report.errors)
 
 
-def test_all_five_audits_pass_valid_resume_and_detect_targeted_regressions() -> None:
+def test_audits_warn_on_underfill_and_detect_targeted_regressions() -> None:
     record = _evidence("ev-platform", "Personally automated release controls for the platform.")
     document = build_resume_document(_profile(), _target(), [record])
 
@@ -248,10 +326,22 @@ def test_all_five_audits_pass_valid_resume_and_detect_targeted_regressions() -> 
         "truth": audit_truth(document, [record], mode="targeted_application"),
         "privacy": audit_privacy(document, mode="targeted_application"),
     }
-    assert all(report.success for report in reports.values()), {name: report.errors for name, report in reports.items()}
+    assert reports["hr"].success
+    assert not reports["hr"].checks["sufficient_density"]
+    assert any(
+        "density_underfill" in warning
+        for warning in reports["hr"].warnings
+    )
+    assert all(report.success for report in reports.values())
     combined = audit_resume(document, [record], mode="targeted_application")
     assert combined.success
-    assert combined.checks == {"ats": True, "hr": True, "technical": True, "truth": True, "privacy": True}
+    assert combined.checks == {
+        "ats": True,
+        "hr": True,
+        "technical": True,
+        "truth": True,
+        "privacy": True,
+    }
 
     placeholder = deepcopy(document.model_dump(mode="python"))
     placeholder["headline"] = "TODO TARGET"
@@ -270,6 +360,26 @@ def test_all_five_audits_pass_valid_resume_and_detect_targeted_regressions() -> 
     technical = audit_technical(expanded, [record])
     assert not truth.success and not truth.checks["safe_claim_unchanged"]
     assert not technical.success and not technical.checks["metric_wording_preserved"]
+
+
+def test_hr_audit_warns_on_underfilled_technical_and_extended_documents() -> None:
+    record = _evidence("ev-platform", "Personally automated release controls for the platform.")
+    document = build_resume_document(_profile(), _target(), [record])
+
+    technical = deepcopy(document.model_dump(mode="python"))
+    technical["render_policy"]["target_pages"] = 2
+    extended = deepcopy(technical)
+    extended["render_policy"]["target_pages"] = 3
+
+    for candidate, minimum in ((technical, 12), (extended, 18)):
+        report = audit_hr(candidate)
+        assert report.success
+        assert not report.checks["sufficient_density"]
+        assert report.checks["reasonable_density"]
+        assert any(
+            "density_underfill" in warning and str(minimum) in warning
+            for warning in report.warnings
+        )
 
 
 def test_resume_selection_skips_audit_metadata_and_standalone_intro_claims() -> None:
@@ -429,6 +539,37 @@ def test_resume_selection_limits_each_source_to_preserve_breadth() -> None:
     assert broader in selected
 
 
+def test_variant_selection_deduplicates_normalized_visible_claims_globally() -> None:
+    records = [
+        _evidence(
+            "ev-project-a",
+            "Built   release controls\nfor the platform.",
+            source_path="personal-data/company-projects/release-a.md",
+            source_section="Personal work",
+        ),
+        _evidence(
+            "ev-project-b",
+            "built release controls for the platform.",
+            source_path="personal-data/company-projects/release-b.md",
+            source_section="Personal work",
+        ),
+    ]
+
+    selected = _select_variant_records(
+        MarkdownCareerV1Adapter(),
+        records,
+        [],
+        [],
+        OutputMode.TARGETED_APPLICATION,
+        _RECRUITER_ONE_PAGE,
+    )
+
+    assert len(selected) == 1
+    assert " ".join(selected[0].safe_claim.split()).casefold() == (
+        "built release controls for the platform."
+    )
+
+
 def test_claim_quality_never_displaces_more_relevant_professional_evidence() -> None:
     professional = _evidence(
         "ev-professional-ai-infra",
@@ -539,6 +680,16 @@ def test_resume_claim_predicate_keeps_qualified_achievement() -> None:
     )
 
     assert resume_claim_is_substantive(qualified)
+
+
+def test_resume_claim_predicate_rejects_checkout_delivery_boundary() -> None:
+    boundary = _evidence(
+        "ev-checkout-boundary",
+        "不把本地 checkout 计为完整交付",
+        source_section="Engineering verification",
+    )
+
+    assert not resume_claim_is_substantive(boundary)
 
 
 def test_technical_audit_rejects_non_substantive_visible_claim() -> None:

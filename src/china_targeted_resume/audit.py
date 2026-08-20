@@ -13,7 +13,7 @@ from china_targeted_resume.composition import (
     render_ats_text,
     resume_claim_is_substantive,
 )
-from china_targeted_resume.models import ValidationReport
+from china_targeted_resume.models import ResumeVariant, ValidationReport
 _BLOCKED_FACT_STATES = frozenset({"F4", "F5", "F6"})
 _PRIVATE_DISCLOSURES = frozenset({"P3"})
 _SECRET = re.compile(r"(?i)(?:api[_-]?key|access[_-]?token|client[_-]?secret|password|passwd|private[_-]?key)\s*[:=]\s*\S+")
@@ -173,16 +173,35 @@ def _hr_findings(document: Any) -> tuple[list[_Finding], dict[str, bool]]:
     if not headline:
         findings.append(_Finding("hr", "direction", "Make the target direction identifiable in the headline."))
     bullets = _bullets(document)
-    if not bullets:
-        findings.append(_Finding("hr", "no_outcomes", "Select at least one verified, relevant outcome."))
-    if len(bullets) > 18:
-        findings.append(_Finding("hr", "density", "Reduce visible bullets; retain the most relevant verified outcomes.", error=False))
+    target_pages = int(_get(_get(document, "render_policy", default={}), "target_pages", default=2))
+    minimum_bullets, maximum_bullets = (
+        target_pages * 6,
+        target_pages * 10,
+    )
+    if len(bullets) < minimum_bullets:
+        findings.append(_Finding(
+            "hr",
+            "density_underfill",
+            (
+                f"Add verified, relevant outcomes when available; the "
+                f"{target_pages}-page profile targets at least "
+                f"{minimum_bullets} visible bullets."
+            ),
+            error=False,
+        ))
+    if len(bullets) > maximum_bullets:
+        findings.append(_Finding("hr", "density", f"Reduce visible bullets to at most {maximum_bullets}; retain the most relevant verified outcomes.", error=False))
     for index, experience in enumerate(_items(data.get("experience", []))):
         required = ("organization", "role", "start_date", "end_date")
         missing = [field for field in required if not str(_get(experience, field, default="")).strip()]
         if missing:
             findings.append(_Finding("hr", "timeline", f"Experience {index + 1} needs explicit {', '.join(missing)}; do not disguise timeline gaps."))
-    checks = {"target_direction_visible": headline, "core_outcome_visible": bool(bullets), "reasonable_density": len(bullets) <= 18}
+    checks = {
+        "target_direction_visible": headline,
+        "core_outcome_visible": bool(bullets),
+        "sufficient_density": len(bullets) >= minimum_bullets,
+        "reasonable_density": len(bullets) <= maximum_bullets,
+    }
     return findings, checks
 
 
@@ -194,6 +213,22 @@ def audit_hr(document: Any) -> ValidationReport:
 def _technical_findings(document: Any, evidence_records: Sequence[Any]) -> tuple[list[_Finding], dict[str, bool]]:
     findings: list[_Finding] = []
     records = {str(_get(record, "evidence_id", default="")): record for record in evidence_records}
+    if _get(document, "variant") != ResumeVariant.RECRUITER_ONE_PAGE.value:
+        for index, project in enumerate(
+            _items(_get(document, "projects", default=[]))
+        ):
+            if not str(_get(project, "context", default="")).strip():
+                findings.append(
+                    _Finding(
+                        "technical",
+                        "project_context",
+                        (
+                            "Add a source-backed system/problem context to "
+                            f"project {index + 1}."
+                        ),
+                        error=False,
+                    )
+                )
     for section, index, bullet in _bullets(document):
         claim_ids = [str(value) for value in _items(_get(bullet, "claim_ids", default=[]))]
         text = str(_get(bullet, "text", default=""))
@@ -216,9 +251,6 @@ def _technical_findings(document: Any, evidence_records: Sequence[Any]) -> tuple
                         f"claim {claim_id} from visible resume sections."
                     ),
                 ))
-        container = _items(_get(document, section, default=[]))[index]
-        if section == "projects" and not str(_get(container, "context", default="")).strip():
-            findings.append(_Finding("technical", "project_context", f"Add a source-backed system/problem context to project {index + 1}.", error=False))
     checks = {
         "contribution_boundaries": not any(
             finding.code == "contribution_scope" for finding in findings

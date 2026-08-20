@@ -32,6 +32,12 @@ class OutputMode(StrEnum):
     MASTER_RESUME = "master_resume"
 
 
+class ResumeVariant(StrEnum):
+    RECRUITER_ONE_PAGE = "recruiter-one-page"
+    TECHNICAL_TWO_PAGE = "technical-two-page"
+    EXTENDED_THREE_PAGE = "extended-three-page"
+
+
 class RoleMatchState(StrEnum):
     DIRECT_EVIDENCE = "已有直接证据"
     TRANSFERABLE_EXPERIENCE = "可迁移经验"
@@ -194,7 +200,7 @@ class RunRequest(CanonicalModel):
     application_constraints: list[dict[str, Any]] | dict[str, Any] = Field(default_factory=dict)
     output_mode: OutputMode = OutputMode.TARGETED_APPLICATION
     language: str = "zh-CN"
-    target_pages: int = Field(default=2, ge=1, le=6)
+    include_extended_profile: bool = False
     template: Literal["ats-simple", "human-readable"] = "ats-simple"
     persist_role_research: bool = False
     export_roadmap_handoff: bool = False
@@ -493,14 +499,22 @@ class Honor(CanonicalModel):
 
 
 class RenderPolicy(CanonicalModel):
+    minimum_pages: int = Field(default=1, ge=1, le=6)
     target_pages: int = Field(default=2, ge=1, le=6)
     template: Literal["ats-simple", "human-readable"] = "ats-simple"
     minimum_body_font_pt: float = Field(default=10.0, ge=10.0, le=16.0)
     minimum_margin_mm: float = Field(default=12.0, ge=12.0, le=30.0)
 
+    @model_validator(mode="after")
+    def page_range_is_ordered(self) -> RenderPolicy:
+        if self.minimum_pages > self.target_pages:
+            raise ValueError("minimum_pages must not exceed target_pages")
+        return self
+
 
 class ResumeDocument(CanonicalModel):
     schema_version: int = Field(default=1, ge=1)
+    variant: ResumeVariant = ResumeVariant.TECHNICAL_TWO_PAGE
     locale: str = "zh-CN"
     target: ResumeTarget
     contact: Contact

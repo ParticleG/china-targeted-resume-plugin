@@ -1,11 +1,17 @@
 from __future__ import annotations
 
 import re
+from pathlib import Path
+
+import pymupdf
+import pytest
+
 
 from china_targeted_resume.composition import compact_resume_document
-from china_targeted_resume.models import ResumeDocument
+from china_targeted_resume.models import ResumeDocument, ValidationReport
 from china_targeted_resume.rendering import render_html
-
+from china_targeted_resume.rendering.inspect import InspectionConfig, inspect_pdf
+from china_targeted_resume.rendering.pdf import PdfRenderResult, render_with_compaction
 
 SECTION_ORDER = ("contact", "summary", "skills", "experience", "projects", "education", "honors", "links")
 
@@ -122,3 +128,120 @@ def test_one_page_compaction_removes_low_priority_content_before_touching_typogr
     assert compacted.render_policy.minimum_body_font_pt >= 10.0
     assert compacted.render_policy.minimum_margin_mm >= 12.0
     assert compacted.render_policy == document.render_policy
+
+
+
+def _blank_pdf(path: Path, pages: int) -> None:
+    document = pymupdf.open()
+    try:
+        for _ in range(pages):
+            document.new_page(width=595.28, height=841.89)
+        document.save(path)
+    finally:
+        document.close()
+
+
+def test_exact_page_inspection_reports_underfill_and_overflow_separately(tmp_path: Path) -> None:
+    one_page = tmp_path / "one-page.pdf"
+    two_pages = tmp_path / "two-pages.pdf"
+    _blank_pdf(one_page, 1)
+    _blank_pdf(two_pages, 2)
+
+    exact_one_page = InspectionConfig(target_pages=1, minimum_pages=1)
+    one_page_report = inspect_pdf(one_page, exact_one_page)
+    overflow_report = inspect_pdf(two_pages, exact_one_page)
+    underfill_report = inspect_pdf(one_page, InspectionConfig(target_pages=2, minimum_pages=2))
+
+    assert one_page_report.checks["page_minimum"] and one_page_report.checks["page_limit"]
+    assert overflow_report.checks["page_minimum"] and not overflow_report.checks["page_limit"]
+    assert not underfill_report.checks["page_minimum"] and underfill_report.checks["page_limit"]
+
+
+def test_inspection_page_bounds_must_be_ordered() -> None:
+    with pytest.raises(ValueError, match="minimum_pages"):
+        InspectionConfig(target_pages=1, minimum_pages=2)
+
+
+@pytest.mark.parametrize("final_success", [True, False])
+def test_compaction_result_exposes_the_last_rendered_document(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, final_success: bool) -> None:
+    initial = _resume_document()
+    revised = initial.model_copy(update={"headline": "修订后的高级平台工程师"})
+    rendered_documents: list[ResumeDocument] = []
+    reports = iter(
+        [
+            ValidationReport(success=False, errors=["first attempt rejected"]),
+            ValidationReport(success=final_success, errors=[] if final_success else ["last attempt rejected"]),
+        ]
+    )
+
+    def fake_render(document: ResumeDocument, output_path: str | Path, **_: object) -> PdfRenderResult:
+        rendered_documents.append(document)
+        return PdfRenderResult(Path(output_path), (), document=document)
+
+    monkeypatch.setattr("china_targeted_resume.rendering.pdf.render_pdf", fake_render)
+    monkeypatch.setattr("china_targeted_resume.rendering.inspect.inspect_pdf", lambda *_: next(reports))
+
+    result = render_with_compaction(
+        initial,
+        tmp_path / "resume.pdf",
+        inspection_config=InspectionConfig(target_pages=1),
+        revised_documents=[revised],
+        max_attempts=2,
+    )
+
+    assert rendered_documents == [initial, revised]
+    assert result.document is revised
+    assert result.success is final_success
+
+
+def test_render_retry_removes_only_stale_numbered_previews(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    initial = _resume_document()
+    revised = initial.model_copy(update={"headline": "Compact retry"})
+    preview = tmp_path / "resume.preview.png"
+    numbered_preview = tmp_path / "resume.preview-2.png"
+    attempts = 0
+
+    def fake_render(
+        document: ResumeDocument,
+        output_path: str | Path,
+        **_: object,
+    ) -> PdfRenderResult:
+        nonlocal attempts
+        attempts += 1
+        preview.write_text(f"attempt {attempts}", encoding="utf-8")
+        previews = (preview,)
+        if attempts == 1:
+            numbered_preview.write_text("stale second page", encoding="utf-8")
+            previews = (preview, numbered_preview)
+        return PdfRenderResult(Path(output_path), previews, document=document)
+
+    reports = iter(
+        [
+            ValidationReport(success=False, errors=["first attempt rejected"]),
+            ValidationReport(success=True),
+        ]
+    )
+    monkeypatch.setattr(
+        "china_targeted_resume.rendering.pdf.render_pdf",
+        fake_render,
+    )
+    monkeypatch.setattr(
+        "china_targeted_resume.rendering.inspect.inspect_pdf",
+        lambda *_: next(reports),
+    )
+
+    result = render_with_compaction(
+        initial,
+        tmp_path / "resume.pdf",
+        preview_path=preview,
+        inspection_config=InspectionConfig(target_pages=2),
+        revised_documents=[revised],
+        max_attempts=2,
+    )
+
+    assert result.preview_paths == (preview,)
+    assert preview.read_text(encoding="utf-8") == "attempt 2"
+    assert not numbered_preview.exists()

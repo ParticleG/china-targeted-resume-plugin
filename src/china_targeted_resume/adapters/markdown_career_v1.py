@@ -827,8 +827,14 @@ class MarkdownCareerV1Adapter:
             r"验证|架构|技术|事故|交付|结果|指标|职责|经历)",
             re.I,
         )
+        context_heading = re.compile(
+            r"(?:overview|background(?:\s+and\s+goal)?|project context|"
+            r"project positioning|概览|背景与目标|项目背景|项目定位)",
+            re.I,
+        )
         aggregated: dict[tuple[str, int, int, str, RoleMatchState, FactState, DisclosureLevel], dict[str, Any]] = {}
         for requirement in requirements:
+            resume_discovery = requirement.category == "resume-discovery"
             query_terms = self._meaningful_terms(" ".join([requirement.text, *requirement.keywords, requirement.category]))
             if not query_terms:
                 continue
@@ -905,7 +911,14 @@ class MarkdownCareerV1Adapter:
                 metadata_overlap = self._strong_terms(
                     query_terms & self._meaningful_terms(metadata)
                 )
-                if not metadata_overlap and not relevant_heading.search(heading_context):
+                if (
+                    not metadata_overlap
+                    and not relevant_heading.search(heading_context)
+                    and not (
+                        resume_discovery
+                        and context_heading.search(heading_context)
+                    )
+                ):
                     continue
                 inherited_fact, inherited_disclosure = document_gates.get(
                     section.source_path,

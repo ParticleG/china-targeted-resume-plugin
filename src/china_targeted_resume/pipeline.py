@@ -19,6 +19,8 @@ from .composition import (
     compact_resume_document,
     evidence_rank_key,
     rank_evidence,
+    provenance_ref,
+    resume_context_is_substantive,
     resume_claim_is_substantive,
     resume_claim_priority,
     render_ats_text,
@@ -29,8 +31,9 @@ from .evidence import build_evidence_map as build_evidence_mappings, build_evide
 from .gaps import build_gaps
 from .io import create_run_directory, jsonable, read_json, secure_directory, validate_output_root, write_json, write_text
 from .models import (
-    CompanyRef, JdInput, OutputMode, Requirement, RoleDossierIR, RoleRef,
-    RoleRequest, RunRequest, SourceRef, TargetBasis, TargetContext,
+    CompanyRef, JdInput, OutputMode, Requirement, ResumeVariant,
+    RoleDossierIR, RoleRef, RoleRequest, RunRequest, SourceRef, TargetBasis,
+    TargetContext,
 )
 from .provenance import build_confirmation_questions, build_provenance
 from .roadmap_handoff import export_roadmap_handoff as make_roadmap_handoff
@@ -47,7 +50,9 @@ _KNOWN_SKILLS = (
     "Prometheus", "Networking", "PyTorch", "Python", "Docker", "Linux",
     "Grafana", "MySQL", "Redis", "gRPC", "ROS 2", "CUDA", "FSDP",
     "DDP", "GPU", "HTTP", "API", "CI/CD", "C++", "C#", "Rust", "Java",
-    "JAX", "Go",
+    "JAX", "Go", "Terraform", "Coder", "Docker Swarm", "Flask",
+    "SQLAlchemy", "CMake", "vcpkg", "Electron", "Vue", "tree-sitter",
+    "CTags", "WebSocket", "NETCONF",
 )
 
 
@@ -77,6 +82,125 @@ class PipelineResult:
             "artifacts": [str(path) for path in self.artifacts],
             "summary": jsonable(self.summary or {}),
         }
+
+
+@dataclass(frozen=True, slots=True)
+class ResumeVariantSpec:
+    variant: ResumeVariant
+    base_name: str
+    target_pages: int
+    work_bullets: int
+    project_limit: int
+    project_bullets: int
+    max_cost: int
+
+
+_RECRUITER_ONE_PAGE = ResumeVariantSpec(
+    variant=ResumeVariant.RECRUITER_ONE_PAGE,
+    base_name="resume-recruiter-1p",
+    target_pages=1,
+    work_bullets=2,
+    project_limit=3,
+    project_bullets=2,
+    max_cost=20,
+)
+_TECHNICAL_TWO_PAGE = ResumeVariantSpec(
+    variant=ResumeVariant.TECHNICAL_TWO_PAGE,
+    base_name="resume-technical-2p",
+    target_pages=2,
+    work_bullets=5,
+    project_limit=5,
+    project_bullets=3,
+    max_cost=24,
+)
+_EXTENDED_THREE_PAGE = ResumeVariantSpec(
+    variant=ResumeVariant.EXTENDED_THREE_PAGE,
+    base_name="technical-profile-3p",
+    target_pages=3,
+    work_bullets=8,
+    project_limit=5,
+    project_bullets=4,
+    max_cost=36,
+)
+
+
+def _requested_variant_specs(
+    request: RunRequest,
+) -> tuple[ResumeVariantSpec, ...]:
+    defaults = (_RECRUITER_ONE_PAGE, _TECHNICAL_TWO_PAGE)
+    return (
+        (*defaults, _EXTENDED_THREE_PAGE)
+        if request.include_extended_profile
+        else defaults
+    )
+
+
+def _resume_discovery_requirements() -> list[Requirement]:
+    texts = (
+        (
+            "resume-discovery-platform",
+            "平台 架构 接口 自动化 交付 运维 工作区 容器 调度 推理 部署",
+        ),
+        (
+            "resume-discovery-results",
+            "性能 延迟 吞吐 缓存 检索 并发 测试 验证 结果 指标",
+        ),
+        (
+            "resume-discovery-systems",
+            "网络 协议 数据库 编译 日志 监控 前端 后端 大模型",
+        ),
+        (
+            "resume-discovery-network-stage",
+            "NETCONF CLI MPLS 协议 网络 测试 自动化",
+        ),
+        (
+            "resume-discovery-ide-stage",
+            "IDE WebSocket Hook 编辑器 上下文 通信 代码补全",
+        ),
+        (
+            "resume-discovery-rag-stage",
+            "RAG CTags tree-sitter 检索 索引 缓存 并发",
+        ),
+        (
+            "resume-discovery-supply-chain",
+            "离线 交付 镜像 制品 供应链 编译 部署 自动化 vendoring SHA-256",
+        ),
+        (
+            "resume-discovery-supply-chain-state",
+            "完整状态 镜像状态 多目标 恢复 离线 交付 镜像 制品",
+        ),
+        (
+            "resume-discovery-supply-chain-cache",
+            "vendoring 共享缓存 SHA-256 skipped 离线 编译 依赖 同步",
+        ),
+        (
+            "resume-discovery-omni-context",
+            (
+                "企业研发环境 VS Code 闭源 Windows IDE 宿主 "
+                "上下文采集 结果回写"
+            ),
+        ),
+        (
+            "resume-discovery-supply-chain-context",
+            (
+                "offline-tool-supply-chain FTP 文件挂载 中转介质 "
+                "分角色部署 中间制品恢复"
+            ),
+        ),
+    )
+    return [
+        make_inferred_requirement(
+            text=text,
+            inference_basis=(
+                "Run-local semantic resume discovery; not a role requirement."
+            ),
+            inference_source="resume-variant-policy",
+            confidence=0.1,
+            requirement_id=requirement_id,
+            category="resume-discovery",
+        )
+        for requirement_id, text in texts
+    ]
 
 
 def _bounded_file(path: Path) -> str:
@@ -261,6 +385,306 @@ def _deduplicate_candidates(candidates: Sequence[Any]) -> list[Any]:
     return list(merged.values())
 
 
+def _mapped_evidence_ids(mappings: Sequence[Any]) -> set[str]:
+    return {
+        str(evidence_id)
+        for mapping in mappings
+        for evidence_id in (
+            mapping.get("evidence_ids", [])
+            if isinstance(mapping, Mapping)
+            else getattr(mapping, "evidence_ids", [])
+        )
+    }
+
+
+def _visible_rank_key(
+    record: Any,
+    mappings: Sequence[Any],
+    requirements: Sequence[Any],
+) -> tuple[Any, ...]:
+    base = evidence_rank_key(
+        record,
+        mappings=mappings,
+        requirements=requirements,
+    )
+    return (
+        *base[:5],
+        -int(resume_claim_priority(record) or 0),
+        *base[5:],
+    )
+
+
+def _rank_visible_records(
+    records: Sequence[Any],
+    mappings: Sequence[Any],
+    requirements: Sequence[Any],
+    mode: Any,
+    *,
+    include_unmapped: bool = False,
+) -> list[Any]:
+    mapped_ids = _mapped_evidence_ids(mappings)
+    ranked = rank_evidence(
+        [
+            record
+            for record in records
+            if (include_unmapped or record.evidence_id in mapped_ids)
+            and resume_claim_is_substantive(record)
+        ],
+        mappings=mappings,
+        requirements=requirements,
+        mode=mode,
+    )
+    ranked.sort(
+        key=lambda record: _visible_rank_key(record, mappings, requirements)
+    )
+    return ranked
+
+
+def _record_dimensions(record: Any) -> set[str]:
+    section = str(record.source.section or "").casefold()
+    claim = str(record.safe_claim)
+    dimensions = {"technical"}
+    if any(
+        marker in section
+        for marker in (
+            "result",
+            "metric",
+            "outcome",
+            "结果",
+            "指标",
+            "量化",
+        )
+    ) or re.search(
+        r"\d|数十|数百|提升|降低|减少|完成交付|吞吐|延迟|耗时|版本化",
+        claim,
+        re.I,
+    ):
+        dimensions.add("result")
+    if any(
+        marker in section
+        for marker in ("verification", "validation", "工程化与验证")
+    ) or re.search(
+        r"\b(?:test|pytest|mock|dry-run|validated?|verified?)\b|"
+        r"(?:测试|验证|复核|对账|连续失败|终态)",
+        claim,
+        re.I,
+    ):
+        dimensions.add("verification")
+    if re.search(
+        r"\b(?:led|owned|coordinated|responsible)\b|"
+        r"(?:带领|负责|协调|主导|个人完成|独立完成)",
+        claim,
+        re.I,
+    ):
+        dimensions.add("ownership")
+    return dimensions
+
+
+def _select_diverse_records(
+    ranked: Sequence[Any],
+    limit: int,
+    dimensions: Sequence[str],
+) -> list[Any]:
+    selected: list[Any] = []
+    selected_ids: set[str] = set()
+    for dimension in dimensions:
+        record = next(
+            (
+                candidate
+                for candidate in ranked
+                if candidate.evidence_id not in selected_ids
+                and dimension in _record_dimensions(candidate)
+            ),
+            None,
+        )
+        if record is None:
+            continue
+        selected.append(record)
+        selected_ids.add(record.evidence_id)
+        if len(selected) >= limit:
+            return selected
+    for record in ranked:
+        if record.evidence_id in selected_ids:
+            continue
+        selected.append(record)
+        selected_ids.add(record.evidence_id)
+        if len(selected) >= limit:
+            break
+    return selected
+
+
+def _work_stage_ranges(
+    adapter: MarkdownCareerV1Adapter,
+    source_path: str,
+) -> list[tuple[int, int]]:
+    text = _seed_text(adapter, source_path)
+    headings = list(
+        re.finditer(
+            r"^###\s+(?:阶段|stage\b).+$",
+            text,
+            re.M | re.I,
+        )
+    )
+    ranges: list[tuple[int, int]] = []
+    for index, heading in enumerate(headings):
+        start_line = text.count("\n", 0, heading.start()) + 1
+        end_offset = (
+            headings[index + 1].start()
+            if index + 1 < len(headings)
+            else len(text)
+        )
+        end_line = text.count("\n", 0, end_offset) + 1
+        ranges.append((start_line, end_line))
+    return ranges
+
+
+def _select_work_records(
+    adapter: MarkdownCareerV1Adapter,
+    source_path: str,
+    ranked: Sequence[Any],
+    limit: int,
+    *,
+    preserve_stages: bool,
+) -> list[Any]:
+    selected: list[Any] = []
+    selected_ids: set[str] = set()
+    if preserve_stages:
+        for start_line, end_line in reversed(
+            _work_stage_ranges(adapter, source_path)
+        ):
+            record = next(
+                (
+                    candidate
+                    for candidate in ranked
+                    if candidate.source_span is not None
+                    and start_line
+                    <= candidate.source_span.start_line
+                    < end_line
+                    and candidate.evidence_id not in selected_ids
+                ),
+                None,
+            )
+            if record is None:
+                continue
+            selected.append(record)
+            selected_ids.add(record.evidence_id)
+            if len(selected) >= limit:
+                return selected
+    remaining = [
+        record for record in ranked if record.evidence_id not in selected_ids
+    ]
+    for record in _select_diverse_records(
+        remaining,
+        limit - len(selected),
+        ("result", "ownership", "verification", "technical"),
+    ):
+        selected.append(record)
+        selected_ids.add(record.evidence_id)
+    return selected
+
+
+def _project_source_priority(path: str) -> int:
+    normalized = f"/{path.casefold().strip('/')}/"
+    if "/company-projects/" in normalized:
+        return 0
+    if "/personal-projects/" in normalized:
+        return 1
+    if "/community-projects/" in normalized:
+        return 2
+    if "/projects/" in normalized:
+        return 3
+    return 4
+
+
+def _select_variant_records(
+    adapter: MarkdownCareerV1Adapter,
+    records: Sequence[Any],
+    mappings: Sequence[Any],
+    requirements: Sequence[Any],
+    mode: Any,
+    spec: ResumeVariantSpec,
+) -> list[Any]:
+    ranked = _rank_visible_records(
+        records,
+        mappings,
+        requirements,
+        mode,
+        include_unmapped=True,
+    )
+    by_path: dict[str, list[Any]] = {}
+    for record in ranked:
+        by_path.setdefault(str(record.source.path or ""), []).append(record)
+
+    work_paths = sorted(
+        (path for path in by_path if "/work/" in f"/{path}/"),
+        key=lambda path: _visible_rank_key(
+            by_path[path][0], mappings, requirements
+        ),
+    )
+    selected: list[Any] = []
+    remaining_work_slots = spec.work_bullets
+    for path in work_paths:
+        if remaining_work_slots <= 0:
+            break
+        chosen = _select_work_records(
+            adapter,
+            path,
+            by_path[path],
+            remaining_work_slots,
+            preserve_stages=spec.variant
+            is not ResumeVariant.RECRUITER_ONE_PAGE,
+        )
+        selected.extend(chosen)
+        remaining_work_slots -= len(chosen)
+
+    project_paths = [
+        path
+        for path in by_path
+        if any(
+            marker in f"/{path}/"
+            for marker in (
+                "/company-projects/",
+                "/personal-projects/",
+                "/community-projects/",
+                "/projects/",
+            )
+        )
+    ]
+    company_project_paths = [
+        path for path in project_paths
+        if "/company-projects/" in f"/{path}/"
+    ]
+    if company_project_paths:
+        project_paths = company_project_paths
+    project_paths.sort(
+        key=lambda path: (
+            _project_source_priority(path),
+            _visible_rank_key(by_path[path][0], mappings, requirements),
+            path,
+        )
+    )
+    for path in project_paths[: spec.project_limit]:
+        selected.extend(
+            _select_diverse_records(
+                by_path[path],
+                spec.project_bullets,
+                ("technical", "result", "verification", "ownership"),
+            )
+        )
+
+    deduplicated: dict[str, tuple[tuple[Any, ...], Any]] = {}
+    for record in selected:
+        claim_key = re.sub(
+            r"\s+", " ", str(record.safe_claim)
+        ).strip().casefold()
+        key = claim_key or str(record.evidence_id)
+        rank = _visible_rank_key(record, mappings, requirements)
+        previous = deduplicated.get(key)
+        if previous is None or rank < previous[0]:
+            deduplicated[key] = (rank, record)
+    return [record for _, record in deduplicated.values()]
+
+
 def _select_resume_records(
     records: Sequence[Any],
     mappings: Sequence[Any],
@@ -272,40 +696,12 @@ def _select_resume_records(
 ) -> list[Any]:
     selected: list[Any] = []
     counts: dict[str, int] = {}
-    mapped_evidence_ids = {
-        str(evidence_id)
-        for mapping in mappings
-        for evidence_id in (
-            mapping.get("evidence_ids", [])
-            if isinstance(mapping, Mapping)
-            else getattr(mapping, "evidence_ids", [])
-        )
-    }
-    ranked_records = rank_evidence(
-        [
-            record
-            for record in records
-            if record.evidence_id in mapped_evidence_ids
-            and resume_claim_is_substantive(record)
-        ],
-        mappings=mappings,
-        requirements=requirements,
-        mode=mode,
-    )
-    def visible_rank_key(record: Any) -> tuple[Any, ...]:
-        base = evidence_rank_key(
-            record,
-            mappings=mappings,
-            requirements=requirements,
-        )
-        return (
-            *base[:5],
-            -int(resume_claim_priority(record) or 0),
-            *base[5:],
-        )
-
-    ranked_records.sort(key=visible_rank_key)
-    for record in ranked_records:
+    for record in _rank_visible_records(
+        records,
+        mappings,
+        requirements,
+        mode,
+    ):
         path = str(record.source.path or record.evidence_id)
         if counts.get(path, 0) >= per_source_limit:
             continue
@@ -617,12 +1013,151 @@ def _education_and_honors(
     return education, honors
 
 
-def _candidate_profile(
+def _work_stage_metadata(
     adapter: MarkdownCareerV1Adapter,
+    source_path: str,
+) -> list[dict[str, Any]]:
+    text = _seed_text(adapter, source_path)
+    headings = list(
+        re.finditer(
+            r"^###\s+((?:阶段|stage\b).+)$",
+            text,
+            re.M | re.I,
+        )
+    )
+    stages: list[dict[str, Any]] = []
+    for index, heading in enumerate(headings):
+        end_offset = (
+            headings[index + 1].start()
+            if index + 1 < len(headings)
+            else len(text)
+        )
+        chunk = text[heading.end() : end_offset]
+        period_match = re.search(r"^\s*\*\*([^*\n]+)\*\*", chunk, re.M)
+        start_date, end_date = (
+            _split_period(period_match.group(1))
+            if period_match is not None
+            else ("", "")
+        )
+        heading_text = _plain_markdown_value(heading.group(1))
+        role = re.split(r"[:：]", heading_text, maxsplit=1)[-1].strip()
+        stages.append(
+            {
+                "start_line": text.count("\n", 0, heading.start()) + 1,
+                "end_line": text.count("\n", 0, end_offset) + 1,
+                "role": role,
+                "start_date": start_date,
+                "end_date": end_date,
+            }
+        )
+    return stages
+
+
+def _context_record(
     records: Sequence[Any],
+    source_path: str,
     mappings: Sequence[Any],
     requirements: Sequence[Any],
     mode: Any,
+    *,
+    start_line: int | None = None,
+    end_line: int | None = None,
+) -> Any | None:
+    candidates = [
+        record
+        for record in records
+        if str(record.source.path or "") == source_path
+        and resume_context_is_substantive(record)
+        and (
+            start_line is None
+            or (
+                record.source_span is not None
+                and start_line
+                <= record.source_span.start_line
+                < (end_line or start_line + 1)
+            )
+        )
+    ]
+    ranked = rank_evidence(
+        candidates,
+        mappings=mappings,
+        requirements=requirements,
+        mode=mode,
+    )
+    ranked.sort(
+        key=lambda record: evidence_rank_key(
+            record,
+            mappings=mappings,
+            requirements=requirements,
+        )
+    )
+    return ranked[0] if ranked else None
+
+
+def _work_stage_profiles(
+    adapter: MarkdownCareerV1Adapter,
+    source_path: str,
+    organization: str,
+    selected_records: Sequence[Any],
+    all_records: Sequence[Any],
+    mappings: Sequence[Any],
+    requirements: Sequence[Any],
+    mode: Any,
+) -> list[dict[str, Any]]:
+    entries: list[dict[str, Any]] = []
+    for stage in reversed(_work_stage_metadata(adapter, source_path)):
+        linked = [
+            record
+            for record in selected_records
+            if record.source_span is not None
+            and stage["start_line"]
+            <= record.source_span.start_line
+            < stage["end_line"]
+        ]
+        if not linked:
+            continue
+        context_record = _context_record(
+            all_records,
+            source_path,
+            mappings,
+            requirements,
+            mode,
+            start_line=stage["start_line"],
+            end_line=stage["end_line"],
+        )
+        refs = [source_path]
+        if context_record is not None:
+            ref = provenance_ref(context_record)
+            if ref:
+                refs.append(ref)
+        entries.append(
+            {
+                "organization": organization,
+                "role": stage["role"],
+                "start_date": stage["start_date"],
+                "end_date": stage["end_date"],
+                "context": (
+                    context_record.safe_claim
+                    if context_record is not None
+                    else None
+                ),
+                "evidence_ids": [
+                    record.evidence_id for record in linked
+                ],
+                "source_refs": refs,
+            }
+        )
+    return entries
+
+
+def _candidate_profile(
+    adapter: MarkdownCareerV1Adapter,
+    records: Sequence[Any],
+    all_records: Sequence[Any],
+    mappings: Sequence[Any],
+    requirements: Sequence[Any],
+    mode: Any,
+    spec: ResumeVariantSpec,
 ) -> dict[str, Any]:
     basic_ref = "personal-data/profile/basic-information.md"
     fields = _profile_fields(adapter, basic_ref)
@@ -683,20 +1218,82 @@ def _candidate_profile(
                 ),
                 timeline_rows[0] if len(timeline_rows) == 1 else {},
             )
-            experience.append(
-                {
-                    "organization": organization or timeline.get("organization", title),
-                    "role": role or timeline.get("role", ""),
-                    "start_date": start_date or timeline.get("start_date", ""),
-                    "end_date": end_date or timeline.get("end_date", ""),
-                    "evidence_ids": ids,
-                    "source_refs": refs,
-                }
+            resolved_organization = (
+                organization or timeline.get("organization", title)
             )
+            if spec.variant is ResumeVariant.RECRUITER_ONE_PAGE:
+                experience.append(
+                    {
+                        "organization": resolved_organization,
+                        "role": role or timeline.get("role", ""),
+                        "start_date": (
+                            start_date or timeline.get("start_date", "")
+                        ),
+                        "end_date": end_date or timeline.get("end_date", ""),
+                        "context": _plain_markdown_value(
+                            _field(
+                                work_fields,
+                                "职业演进",
+                                "career progression",
+                            )
+                        )
+                        or None,
+                        "evidence_ids": ids,
+                        "source_refs": refs,
+                    }
+                )
+            else:
+                stages = _work_stage_profiles(
+                    adapter,
+                    path,
+                    resolved_organization,
+                    linked,
+                    all_records,
+                    mappings,
+                    requirements,
+                    mode,
+                )
+                if stages:
+                    experience.extend(stages)
+                else:
+                    experience.append(
+                        {
+                            "organization": resolved_organization,
+                            "role": role or timeline.get("role", ""),
+                            "start_date": (
+                                start_date or timeline.get("start_date", "")
+                            ),
+                            "end_date": (
+                                end_date or timeline.get("end_date", "")
+                            ),
+                            "evidence_ids": ids,
+                            "source_refs": refs,
+                        }
+                    )
         elif any(directory in path for directory in project_directories):
+            context_record = (
+                _context_record(
+                    all_records,
+                    path,
+                    mappings,
+                    requirements,
+                    mode,
+                )
+                if spec.variant is not ResumeVariant.RECRUITER_ONE_PAGE
+                else None
+            )
+            if context_record is not None:
+                ref = provenance_ref(context_record)
+                if ref:
+                    refs.append(ref)
             projects.append(
                 {
                     "name": title,
+                    "context": (
+                        context_record.safe_claim
+                        if context_record is not None
+                        else None
+                    ),
                     "evidence_ids": ids,
                     "source_refs": refs,
                 }
@@ -741,6 +1338,23 @@ def _candidate_profile(
                 for record in linked_records
                 if record.source.path
             )
+    for record in records:
+        claim = record.safe_claim.casefold()
+        for skill in _KNOWN_SKILLS:
+            if skill.casefold() not in claim:
+                continue
+            key = skill.casefold()
+            entry = skill_index.setdefault(
+                key,
+                {
+                    "text": skill,
+                    "evidence_ids": [],
+                    "source_refs": [],
+                },
+            )
+            entry["evidence_ids"].append(record.evidence_id)
+            if record.source.path:
+                entry["source_refs"].append(str(record.source.path))
     skill_items = []
     for entry in skill_index.values():
         entry["evidence_ids"] = list(dict.fromkeys(entry["evidence_ids"]))
@@ -757,7 +1371,11 @@ def _candidate_profile(
         "projects": projects,
         "skills": [{
             "group": "Relevant Capabilities",
-            "items": skill_items[:8],
+            "items": skill_items[: {
+                ResumeVariant.RECRUITER_ONE_PAGE: 8,
+                ResumeVariant.TECHNICAL_TWO_PAGE: 12,
+                ResumeVariant.EXTENDED_THREE_PAGE: 16,
+            }[spec.variant]],
             "source_refs": list(dict.fromkeys(
                 ref for item in skill_items for ref in item["source_refs"]
             )),
@@ -1012,6 +1630,84 @@ def _audit_markdown(report: Any, target: TargetContext) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _variant_artifact_names(spec: ResumeVariantSpec) -> dict[str, str]:
+    base = spec.base_name
+    return {
+        "document": f"{base}.document.json",
+        "provenance": f"{base}.provenance.json",
+        "validation": f"{base}.validation.json",
+        "audit": f"{base}.audit.md",
+        "markdown": f"{base}.md",
+        "ats_text": f"{base}.txt",
+        "html": f"{base}.html",
+        "pdf": f"{base}.pdf",
+        "preview": f"{base}.preview.png",
+    }
+
+
+def _document_headings(document: Any) -> tuple[str, ...]:
+    headings = tuple(
+        label
+        for field, label in (
+            ("summary", "Summary"),
+            ("skills", "Skills"),
+            ("experience", "Experience"),
+            ("projects", "Projects"),
+            ("education", "Education"),
+            ("honors", "Honors"),
+        )
+        if getattr(document, field)
+    )
+    return headings + (("Links",) if document.contact.links else ())
+
+
+def _inspection_for_document(document: Any) -> InspectionConfig:
+    expected_links = tuple(
+        [
+            *(
+                ["mailto:" + document.contact.email]
+                if document.contact.email
+                else []
+            ),
+            *(str(link.url) for link in document.contact.links),
+        ]
+    )
+    policy = document.render_policy
+    return InspectionConfig(
+        target_pages=policy.target_pages,
+        minimum_pages=policy.minimum_pages,
+        expected_name=document.contact.name,
+        expected_headings=_document_headings(document),
+        expected_links=expected_links,
+        minimum_body_font_pt=policy.minimum_body_font_pt,
+        minimum_margin_mm=policy.minimum_margin_mm,
+        require_mailto_link=bool(document.contact.email),
+        require_https_link=bool(document.contact.links),
+    )
+
+
+def _compact_overflowing_variant(
+    current: Any,
+    report: Any,
+    attempt: int,
+    spec: ResumeVariantSpec,
+) -> Any | None:
+    checks = (
+        report.checks
+        if isinstance(getattr(report, "checks", None), Mapping)
+        else {}
+    )
+    if checks.get("page_limit", True):
+        return None
+    return compact_resume_document(
+        current,
+        max(
+            spec.target_pages * 6,
+            spec.max_cost - attempt * 2,
+        ),
+    )
+
+
 class Pipeline:
     """Compose existing domain functions without reproducing their policy rules."""
 
@@ -1057,9 +1753,45 @@ class Pipeline:
         )
         competencies = build_role_competencies(requirements)
         constraints = list(parsed_jd.application_constraints) if parsed_jd else []
-        candidates = _load_verified_candidates(adapter, adapter.search_evidence(requirements))
-        records = [record for candidate in candidates if (record := build_evidence_record(candidate, candidate.requirement_ids, mode=run_request.output_mode)) is not None]
-        mappings = build_evidence_mappings(requirements, candidates, mode=run_request.output_mode)
+        candidates = _load_verified_candidates(
+            adapter,
+            adapter.search_evidence(requirements),
+        )
+        records = [
+            record
+            for candidate in candidates
+            if (
+                record := build_evidence_record(
+                    candidate,
+                    candidate.requirement_ids,
+                    mode=run_request.output_mode,
+                )
+            )
+            is not None
+        ]
+        resume_candidates = _load_verified_candidates(
+            adapter,
+            adapter.search_evidence(
+                [*requirements, *_resume_discovery_requirements()]
+            ),
+        )
+        resume_records = [
+            record
+            for candidate in resume_candidates
+            if (
+                record := build_evidence_record(
+                    candidate,
+                    candidate.requirement_ids,
+                    mode=run_request.output_mode,
+                )
+            )
+            is not None
+        ]
+        mappings = build_evidence_mappings(
+            requirements,
+            candidates,
+            mode=run_request.output_mode,
+        )
         gaps = build_gaps(requirements, mappings)
         if target.target_basis == TargetBasis.EXACT_CURRENT_JD:
             explicit = [item for item in requirements if item.origin.value == "explicit"]
@@ -1089,34 +1821,6 @@ class Pipeline:
             source_manifest=manifest,
             limitations=target.limitations,
         )
-        selected_records = _select_resume_records(
-            records,
-            mappings,
-            requirements,
-            run_request.output_mode,
-            total_limit=max(4, min(8, run_request.target_pages * 4)),
-        )
-        profile = _candidate_profile(
-            adapter,
-            selected_records,
-            mappings,
-            requirements,
-            run_request.output_mode,
-        )
-        document = build_resume_document(
-            profile,
-            target,
-            selected_records,
-            mappings,
-            requirements,
-            mode=run_request.output_mode,
-            locale=run_request.language,
-            target_pages=run_request.target_pages,
-            template=run_request.template,
-        )
-        document = compact_resume_document(
-            document, max_cost=max(5, run_request.target_pages * 6)
-        )
         run_dir = create_run_directory(
             output_root,
             company.company_id if company is not None else target.company,
@@ -1124,33 +1828,38 @@ class Pipeline:
         )
         role_dir = secure_directory(run_dir / "role-dossier", exist_ok=False)
         artifacts: list[Path] = []
-        dossier_files = render_dossier_files(dossier, job_description=jd_text)
-        artifacts.extend(write_text(role_dir / name, dossier_files[name]) for name in DOSSIER_FILES)
-        artifacts.append(write_text(run_dir / "jd-snapshot.md", jd_text.rstrip() + ("\n" if jd_text else "")))
-        visible_claim_ids = _visible_claim_ids(document)
-        provenance = build_provenance(
-            selected_records,
-            visible_claim_ids,
-            mode=run_request.output_mode,
+        dossier_files = render_dossier_files(
+            dossier,
+            job_description=jd_text,
+        )
+        artifacts.extend(
+            write_text(role_dir / name, dossier_files[name])
+            for name in DOSSIER_FILES
+        )
+        artifacts.append(
+            write_text(
+                run_dir / "jd-snapshot.md",
+                jd_text.rstrip() + ("\n" if jd_text else ""),
+            )
         )
         questions = build_confirmation_questions(records, constraints)
-        audit = audit_resume(
-            document,
-            selected_records,
-            mappings,
-            requirements,
-            provenance,
-            mode=run_request.output_mode,
+        persisted_request = run_request.model_dump(
+            mode="json",
+            exclude_none=False,
         )
-        persisted_request = run_request.model_dump(mode="json", exclude_none=False)
         persisted_request["jd"] = {
             "text": None,
             "url": None,
             "file": str(run_dir / "jd-snapshot.md") if jd_text else None,
         }
-
-        named = {
-            "run.json": {"schema_version": 1, "created_at": datetime.now(UTC), "request": persisted_request, "target_basis": target.target_basis, "run_id": run_dir.name},
+        shared_artifacts = {
+            "run.json": {
+                "schema_version": 1,
+                "created_at": datetime.now(UTC),
+                "request": persisted_request,
+                "target_basis": target.target_basis,
+                "run_id": run_dir.name,
+            },
             "source-manifest.json": manifest,
             "target-context.json": target,
             "requirements.json": requirements,
@@ -1159,80 +1868,217 @@ class Pipeline:
             "evidence-map.json": mappings,
             "gaps.json": gaps,
             "application-recommendation.json": recommendation,
-            "provenance.json": provenance,
-            "resume-document.json": document,
             "role-dossier-ir.json": _persistable_dossier(dossier),
         }
-        for filename, value in named.items():
+        for filename, value in shared_artifacts.items():
             artifacts.append(write_json(run_dir / filename, value))
         if run_request.export_roadmap_handoff:
-            handoff = make_roadmap_handoff(gaps, explicitly_requested=True)
-            artifacts.append(write_json(run_dir / "roadmap-handoff.json", handoff))
-        artifacts.extend([
-            write_text(run_dir / "confirmation-questions.md", _questions_markdown(questions)),
-            write_text(run_dir / "audit-report.md", _audit_markdown(audit, target)),
-            write_text(run_dir / "resume-targeted.md", render_targeted_markdown(document)),
-            write_text(run_dir / "resume-ats.txt", render_ats_text(document)),
-            write_text(run_dir / "resume.html", render_html(document, run_request.template)),
-            write_text(run_dir / "interview-questions.md", _questions_markdown(dossier.interview_questions)),
-        ])
-        headings = tuple(
-            label
-            for field, label in (
-                ("summary", "Summary"),
-                ("skills", "Skills"),
-                ("experience", "Experience"),
-                ("projects", "Projects"),
-                ("education", "Education"),
-                ("honors", "Honors"),
+            handoff = make_roadmap_handoff(
+                gaps,
+                explicitly_requested=True,
             )
-            if getattr(document, field)
-        ) + (("Links",) if document.contact.links else ())
-        expected_links = tuple(
+            artifacts.append(
+                write_json(run_dir / "roadmap-handoff.json", handoff)
+            )
+        artifacts.extend(
             [
-                *(["mailto:" + document.contact.email] if document.contact.email else []),
-                *(str(link.url) for link in document.contact.links),
+                write_text(
+                    run_dir / "confirmation-questions.md",
+                    _questions_markdown(questions),
+                ),
+                write_text(
+                    run_dir / "interview-questions.md",
+                    _questions_markdown(dossier.interview_questions),
+                ),
             ]
         )
-        inspection = InspectionConfig(
-            target_pages=run_request.target_pages,
-            expected_name=document.contact.name,
-            expected_headings=headings,
-            expected_links=expected_links,
-            minimum_body_font_pt=10.0,
-            minimum_margin_mm=12.0,
-            require_mailto_link=bool(document.contact.email),
-            require_https_link=bool(document.contact.links),
+
+        variant_manifest: list[dict[str, Any]] = []
+        variant_summaries: dict[str, dict[str, Any]] = {}
+        validation_errors: list[str] = []
+        for spec in _requested_variant_specs(run_request):
+            selected_records = _select_variant_records(
+                adapter,
+                resume_records,
+                mappings,
+                requirements,
+                run_request.output_mode,
+                spec,
+            )
+            profile = _candidate_profile(
+                adapter,
+                selected_records,
+                resume_records,
+                mappings,
+                requirements,
+                run_request.output_mode,
+                spec,
+            )
+            document = build_resume_document(
+                profile,
+                target,
+                selected_records,
+                mappings,
+                requirements,
+                mode=run_request.output_mode,
+                locale=run_request.language,
+                variant=spec.variant,
+                target_pages=spec.target_pages,
+                minimum_pages=(
+                    spec.target_pages
+                    if len(selected_records) >= spec.target_pages * 6
+                    else 1
+                ),
+                template=run_request.template,
+            )
+            names = _variant_artifact_names(spec)
+            pdf_result = render_with_compaction(
+                document,
+                run_dir / names["pdf"],
+                inspection_config=_inspection_for_document(document),
+                template=run_request.template,
+                preview_path=run_dir / names["preview"],
+                compact=lambda current, report, attempt, current_spec=spec: (
+                    _compact_overflowing_variant(
+                        current,
+                        report,
+                        attempt,
+                        current_spec,
+                    )
+                ),
+                max_attempts=5,
+                margin_mm=12.0,
+            )
+            final_document = pdf_result.document
+            visible_claim_ids = _visible_claim_ids(final_document)
+            provenance = build_provenance(
+                selected_records,
+                visible_claim_ids,
+                mode=run_request.output_mode,
+            )
+            audit = audit_resume(
+                final_document,
+                selected_records,
+                mappings,
+                requirements,
+                provenance,
+                mode=run_request.output_mode,
+            )
+            artifacts.extend(
+                [
+                    write_json(
+                        run_dir / names["document"],
+                        final_document,
+                    ),
+                    write_json(
+                        run_dir / names["provenance"],
+                        provenance,
+                    ),
+                    write_json(
+                        run_dir / names["validation"],
+                        audit,
+                    ),
+                    write_text(
+                        run_dir / names["audit"],
+                        _audit_markdown(audit, target),
+                    ),
+                    write_text(
+                        run_dir / names["markdown"],
+                        render_targeted_markdown(final_document),
+                    ),
+                    write_text(
+                        run_dir / names["ats_text"],
+                        render_ats_text(final_document),
+                    ),
+                    write_text(
+                        run_dir / names["html"],
+                        render_html(final_document, run_request.template),
+                    ),
+                    Path(pdf_result.pdf_path),
+                    *(Path(path) for path in pdf_result.preview_paths),
+                ]
+            )
+            pdf_validation = pdf_result.validation
+            pdf_success = bool(
+                pdf_validation is not None
+                and pdf_validation.success
+            )
+            variant_key = spec.variant.value
+            variant_summaries[variant_key] = {
+                "audit_success": audit.success,
+                "pdf_success": pdf_success,
+                "pages": (
+                    pdf_validation.pages
+                    if pdf_validation is not None
+                    else None
+                ),
+                "visible_claims": len(visible_claim_ids),
+            }
+            variant_manifest.append(
+                {
+                    "variant": variant_key,
+                    "base_name": spec.base_name,
+                    "target_pages": spec.target_pages,
+                    "actual_pages": (
+                        pdf_validation.pages
+                        if pdf_validation is not None
+                        else None
+                    ),
+                    "underfilled": (
+                        len(visible_claim_ids) < spec.target_pages * 6
+                    ),
+                    "visible_claims": len(visible_claim_ids),
+                    "audit_success": audit.success,
+                    "pdf_success": pdf_success,
+                    "artifacts": {
+                        key: value
+                        for key, value in names.items()
+                        if key != "preview"
+                    },
+                    "previews": [
+                        Path(path).name
+                        for path in pdf_result.preview_paths
+                    ],
+                }
+            )
+            if not audit.success:
+                validation_errors.extend(
+                    f"[{variant_key}] {error}"
+                    for error in audit.errors
+                )
+            if not pdf_success and pdf_validation is not None:
+                validation_errors.extend(
+                    f"[{variant_key}] {error}"
+                    for error in pdf_validation.errors
+                )
+        artifacts.append(
+            write_json(
+                run_dir / "resume-variants.json",
+                {
+                    "schema_version": 1,
+                    "variants": variant_manifest,
+                },
+            )
         )
-        pdf_result = render_with_compaction(
-            document,
-            run_dir / "resume.pdf",
-            inspection_config=inspection,
-            template=run_request.template,
-            preview_path=run_dir / "resume-preview.png",
-            compact=lambda current, _report, attempt: compact_resume_document(
-                current,
-                max(3, run_request.target_pages * 6 - attempt * 2),
-            ),
-            max_attempts=3,
-            margin_mm=12.0,
-        )
-        artifacts.append(Path(pdf_result.pdf_path))
-        artifacts.extend(Path(path) for path in pdf_result.preview_paths)
         for path in artifacts:
             if path.exists():
                 path.chmod(0o600)
-        if not audit.success or not pdf_result.validation.success:
-            errors = [*audit.errors, *pdf_result.validation.errors]
+        if validation_errors:
             raise PipelineError(
                 f"run retained at {run_dir}; validation failed: "
-                + "; ".join(errors)
+                + "; ".join(validation_errors)
             )
-        return PipelineResult("generate", run_dir, tuple(dict.fromkeys(artifacts)), {
-            "target_basis": target.target_basis.value, "application_decision": recommendation.decision.value,
-            "audit_success": audit.success, "pdf_success": pdf_result.validation.success,
-            "limitations": target.limitations,
-        })
+        return PipelineResult(
+            "generate",
+            run_dir,
+            tuple(dict.fromkeys(artifacts)),
+            {
+                "target_basis": target.target_basis.value,
+                "application_decision": recommendation.decision.value,
+                "variants": variant_summaries,
+                "limitations": target.limitations,
+            },
+        )
 
     def analyze_role(self, request: RunRequest | Mapping[str, Any]) -> PipelineResult:
         result = self.generate(request)
@@ -1249,14 +2095,26 @@ class Pipeline:
         return PipelineResult("build-evidence-map", run_dir, (path,), {"requirements": len(requirements), "mappings": len(mappings)})
 
     def validate_content(self, run: str | Path) -> PipelineResult:
-        from .models import EvidenceMapping, ProvenanceRecord, Requirement, ResumeDocument
+        from .models import (
+            EvidenceMapping,
+            ProvenanceRecord,
+            Requirement,
+            ResumeDocument,
+        )
         run_dir = Path(run).resolve(strict=True)
-        document = ResumeDocument.model_validate(read_json(run_dir / "resume-document.json"))
-        requirements = [Requirement.model_validate(item) for item in read_json(run_dir / "requirements.json")]
-        request = RunRequest.model_validate(read_json(run_dir / "run.json")["request"])
+        requirements = [
+            Requirement.model_validate(item)
+            for item in read_json(run_dir / "requirements.json")
+        ]
+        request = RunRequest.model_validate(
+            read_json(run_dir / "run.json")["request"]
+        )
         adapter = self._adapter(request.source_root)
         candidates = _load_verified_candidates(
-            adapter, adapter.search_evidence(requirements)
+            adapter,
+            adapter.search_evidence(
+                [*requirements, *_resume_discovery_requirements()]
+            ),
         )
         records = [
             record
@@ -1274,41 +2132,124 @@ class Pipeline:
             EvidenceMapping.model_validate(item)
             for item in read_json(run_dir / "evidence-map.json")
         ]
-        provenance = [
-            ProvenanceRecord.model_validate(item)
-            for item in read_json(run_dir / "provenance.json")
-        ]
-        report = audit_resume(
-            document,
-            records,
-            mappings,
-            requirements,
-            provenance,
-            mode=request.output_mode,
+        manifest = read_json(run_dir / "resume-variants.json")
+        artifacts: list[Path] = []
+        errors: list[str] = []
+        warnings: list[str] = []
+        variants: dict[str, bool] = {}
+        for entry in manifest.get("variants", []):
+            variant = str(entry["variant"])
+            names = entry["artifacts"]
+            document = ResumeDocument.model_validate(
+                read_json(run_dir / names["document"])
+            )
+            provenance = [
+                ProvenanceRecord.model_validate(item)
+                for item in read_json(run_dir / names["provenance"])
+            ]
+            report = audit_resume(
+                document,
+                records,
+                mappings,
+                requirements,
+                provenance,
+                mode=request.output_mode,
+            )
+            path = write_json(
+                run_dir / names["validation"],
+                report,
+            )
+            artifacts.append(path)
+            variants[variant] = report.success
+            errors.extend(f"[{variant}] {error}" for error in report.errors)
+            warnings.extend(
+                f"[{variant}] {warning}" for warning in report.warnings
+            )
+        success = bool(variants) and all(variants.values())
+        return PipelineResult(
+            "validate-content",
+            run_dir,
+            tuple(artifacts),
+            {
+                "success": success,
+                "variants": variants,
+                "errors": errors,
+                "warnings": warnings,
+            },
         )
-        path = write_json(run_dir / "content-validation.json", report)
-        return PipelineResult("validate-content", run_dir, (path,), {"success": report.success, "errors": report.errors, "warnings": report.warnings})
 
-    def render(self, document_path: str | Path, output: str | Path | None = None) -> PipelineResult:
+    def render(
+        self,
+        document_path: str | Path,
+        output: str | Path | None = None,
+    ) -> PipelineResult:
         from .models import ResumeDocument
         document_file = Path(document_path).resolve(strict=True)
         document = ResumeDocument.model_validate(read_json(document_file))
-        destination = Path(output).expanduser().resolve(strict=False) if output else document_file.with_name("resume.pdf")
+        default_name = (
+            document_file.name.removesuffix(".document.json") + ".pdf"
+            if document_file.name.endswith(".document.json")
+            else document_file.with_suffix(".pdf").name
+        )
+        destination = (
+            Path(output).expanduser().resolve(strict=False)
+            if output
+            else document_file.with_name(default_name)
+        )
         run_manifest = document_file.parent / "run.json"
         if run_manifest.is_file():
-            source_root = RunRequest.model_validate(read_json(run_manifest)["request"]).source_root
+            source_root = RunRequest.model_validate(
+                read_json(run_manifest)["request"]
+            ).source_root
             validate_output_root(source_root, destination.parent)
         secure_directory(destination.parent)
-        result = render_with_compaction(document, destination, inspection_config=InspectionConfig(target_pages=document.render_policy.target_pages), template=document.render_policy.template, preview_path=destination.with_name(destination.stem + "-preview.png"))
-        paths = (Path(result.pdf_path), *(Path(path) for path in result.preview_paths))
+        result = render_with_compaction(
+            document,
+            destination,
+            inspection_config=_inspection_for_document(document),
+            template=document.render_policy.template,
+            preview_path=destination.with_name(
+                destination.stem + ".preview.png"
+            ),
+            max_attempts=1,
+        )
+        paths = (
+            Path(result.pdf_path),
+            *(Path(path) for path in result.preview_paths),
+        )
         for path in paths:
             path.chmod(0o600)
-        return PipelineResult("render", destination.parent, paths, {"success": result.validation.success, "attempts": result.attempts})
+        return PipelineResult(
+            "render",
+            destination.parent,
+            paths,
+            {
+                "success": result.validation.success,
+                "attempts": result.attempts,
+            },
+        )
 
-    def inspect_pdf(self, pdf: str | Path, *, pages: int = 2, expected_name: str = "") -> PipelineResult:
+    def inspect_pdf(
+        self,
+        pdf: str | Path,
+        *,
+        max_pages: int = 2,
+        expected_name: str = "",
+    ) -> PipelineResult:
         path = Path(pdf).resolve(strict=True)
-        report = inspect_pdf_file(path, InspectionConfig(target_pages=pages, expected_name=expected_name))
-        return PipelineResult("inspect-pdf", path.parent, (), report.model_dump(mode="json", exclude_none=True))
+        report = inspect_pdf_file(
+            path,
+            InspectionConfig(
+                target_pages=max_pages,
+                expected_name=expected_name,
+            ),
+        )
+        return PipelineResult(
+            "inspect-pdf",
+            path.parent,
+            (),
+            report.model_dump(mode="json", exclude_none=True),
+        )
 
     def export_roadmap_handoff(self, role: str | Path, output: str | Path, severities: Sequence[str]) -> PipelineResult:
         from .models import Gap
@@ -1510,8 +2451,17 @@ def render(document: str | Path, output: str | Path | None = None) -> PipelineRe
     return Pipeline().render(document, output)
 
 
-def inspect_pdf(pdf: str | Path, *, pages: int = 2, expected_name: str = "") -> PipelineResult:
-    return Pipeline().inspect_pdf(pdf, pages=pages, expected_name=expected_name)
+def inspect_pdf(
+    pdf: str | Path,
+    *,
+    max_pages: int = 2,
+    expected_name: str = "",
+) -> PipelineResult:
+    return Pipeline().inspect_pdf(
+        pdf,
+        max_pages=max_pages,
+        expected_name=expected_name,
+    )
 
 
 def list_companies(source: str | Path) -> list[CompanyRef]:

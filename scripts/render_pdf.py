@@ -36,6 +36,7 @@ def _default_inspection(document: ResumeDocument) -> InspectionConfig:
     expected_headings = tuple(heading for content, heading in section_headings if content)
     return InspectionConfig(
         target_pages=policy.target_pages,
+        minimum_pages=policy.minimum_pages,
         expected_name=document.contact.name,
         expected_headings=expected_headings,
         expected_links=expected_links,

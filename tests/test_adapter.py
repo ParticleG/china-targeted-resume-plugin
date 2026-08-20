@@ -21,6 +21,8 @@ from china_targeted_resume.models import (
     SourceSpan,
 )
 from china_targeted_resume.pipeline import (
+    _RECRUITER_ONE_PAGE,
+    _TECHNICAL_TWO_PAGE,
     _candidate_profile,
     _deduplicate_candidates,
     _timeline_rows,
@@ -175,6 +177,41 @@ def test_evidence_search_is_isolated_to_personal_navigation_sections(
     assert "snippet" not in persisted
     assert "company-research/" not in persisted
     assert "growth-roadmap/" not in persisted
+
+
+def test_resume_discovery_can_retrieve_source_backed_project_context(
+    synthetic_db_copy: Path,
+    requirement_factory,
+) -> None:
+    _remove_documented_traversal(synthetic_db_copy)
+    adapter = MarkdownCareerV1Adapter(synthetic_db_copy)
+    discovery = requirement_factory(
+        text="bounded retries visible delivery state",
+        verbatim_quote="bounded retries visible delivery state",
+        keywords=["bounded retries", "delivery state"],
+        category="resume-discovery",
+    )
+    role_requirement = requirement_factory(
+        text="bounded retries visible delivery state",
+        verbatim_quote="bounded retries visible delivery state",
+        keywords=["bounded retries", "delivery state"],
+        category="responsibility",
+    )
+
+    discovery_candidates = adapter.search_evidence([discovery])
+    role_candidates = adapter.search_evidence([role_requirement])
+
+    assert any(
+        candidate.source.path == "personal-data/projects/lantern-queue.md"
+        and candidate.source.section == "Background and goal"
+        and "bounded retries" in candidate.proposed_claim
+        for candidate in discovery_candidates
+    )
+    assert not any(
+        candidate.source.path == "personal-data/projects/lantern-queue.md"
+        and candidate.source.section == "Background and goal"
+        for candidate in role_candidates
+    )
 
 
 def test_evidence_search_expands_slash_terms_and_prefers_work_sources(
@@ -400,9 +437,11 @@ def test_chinese_tables_populate_contact_timeline_and_public_profile_link(
     profile = _candidate_profile(
         adapter,
         [record],
+        [record],
         [],
         [],
         OutputMode.TARGETED_APPLICATION,
+        _RECRUITER_ONE_PAGE,
     )
 
     assert profile["contact"]["name"] == "林澄"
@@ -437,6 +476,7 @@ def test_chinese_tables_populate_contact_timeline_and_public_profile_link(
             "end_date": "至今",
             "evidence_ids": ["evidence.chinese-work"],
             "source_refs": ["personal-data/work/chinese-experience.md"],
+            "context": None,
         }
     ]
     assert profile["education"] == [
@@ -460,6 +500,96 @@ def test_chinese_tables_populate_contact_timeline_and_public_profile_link(
             ],
         }
     ]
+
+def test_recruiter_profile_keeps_career_context_but_omits_project_context(
+    synthetic_db_copy: Path,
+) -> None:
+    _remove_documented_traversal(synthetic_db_copy)
+    work_path = "personal-data/work/recruiter-context.md"
+    (
+        synthetic_db_copy / work_path
+    ).write_text(
+        "# 星桥平台工作经历\n\n"
+        "## 概览\n\n"
+        "- **公司**：星桥平台（虚构）\n"
+        "- **任职时间**：2022.01－至今\n"
+        "- **当前岗位**：平台工程师\n"
+        "- **职业演进**：从后端工程逐步扩展到平台交付与可靠性建设\n",
+        encoding="utf-8",
+    )
+    adapter = MarkdownCareerV1Adapter(synthetic_db_copy)
+    project_path = "personal-data/company-projects/context-fixture.md"
+
+    def record(
+        evidence_id: str,
+        path: str,
+        section: str,
+        claim: str,
+    ) -> EvidenceRecord:
+        return EvidenceRecord(
+            evidence_id=evidence_id,
+            source=SourceRef(
+                path=path,
+                title="Synthetic Context Fixture",
+                section=section,
+                source_hash=f"{evidence_id}-hash",
+                source_type="career-source",
+            ),
+            source_span=SourceSpan(start_line=1, end_line=1),
+            fact_state=FactState.F2,
+            disclosure=DisclosureLevel.P1,
+            match_state=RoleMatchState.DIRECT_EVIDENCE,
+            contribution_scope="Synthetic source-faithful claim.",
+            safe_claim=claim,
+            freshness=Freshness(dynamic=False),
+        )
+
+    work = record(
+        "evidence.recruiter-work",
+        work_path,
+        "Personal work",
+        "Built platform delivery controls for internal services.",
+    )
+    project = record(
+        "evidence.recruiter-project",
+        project_path,
+        "Personal work",
+        "Implemented deterministic project delivery checks.",
+    )
+    project_context = record(
+        "evidence.recruiter-project-context",
+        project_path,
+        "Background and goals",
+        "The project provides a controlled environment for delivery experiments.",
+    )
+    selected = [work, project]
+    all_records = [work, project, project_context]
+
+    recruiter = _candidate_profile(
+        adapter,
+        selected,
+        all_records,
+        [],
+        [],
+        OutputMode.TARGETED_APPLICATION,
+        _RECRUITER_ONE_PAGE,
+    )
+    technical = _candidate_profile(
+        adapter,
+        selected,
+        all_records,
+        [],
+        [],
+        OutputMode.TARGETED_APPLICATION,
+        _TECHNICAL_TWO_PAGE,
+    )
+
+    assert recruiter["experience"][0]["context"] == (
+        "从后端工程逐步扩展到平台交付与可靠性建设"
+    )
+    assert recruiter["projects"][0]["context"] is None
+    assert technical["projects"][0]["context"] == project_context.safe_claim
+
 
 
 def test_candidate_profile_skills_reference_only_selected_evidence(
@@ -503,9 +633,11 @@ def test_candidate_profile_skills_reference_only_selected_evidence(
     profile = _candidate_profile(
         adapter,
         [record],
+        [record],
         [mapping],
         [requirement],
         OutputMode.TARGETED_APPLICATION,
+        _RECRUITER_ONE_PAGE,
     )
 
     assert profile["skills"] == [

@@ -22,6 +22,7 @@ china-targeted-resume = "china_targeted_resume.cli:main"
 [dependency-groups]
 dev = [
   "coverage[toml]>=7.10,<8",
+  "jsonschema>=4.25,<5",
   "pytest>=8.4,<9",
 ]
 

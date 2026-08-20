@@ -117,6 +117,7 @@ a:focus-visible {
   font-size: var(--text-body);
 }
 
+
 .resume-header {
   margin-block-end: var(--space-5);
 }
@@ -209,6 +210,12 @@ a:focus-visible {
   margin-block-end: var(--space-3);
   break-inside: avoid-page;
   page-break-inside: avoid;
+}
+
+.resume-document[data-resume-variant="extended-three-page"]
+  .resume-entry[data-entry-kind="project"] {
+  break-inside: auto;
+  page-break-inside: auto;
 }
 
 .resume-entry:last-child {

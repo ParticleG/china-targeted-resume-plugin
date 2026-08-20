@@ -21,6 +21,22 @@ from china_targeted_resume.models import CompanyRef, RoleRef, RunRequest
 from china_targeted_resume.pipeline import Pipeline, _tier_b_requirements
 
 
+DEFAULT_VARIANT_BASES = {
+    "resume-recruiter-1p",
+    "resume-technical-2p",
+}
+EXTENDED_VARIANT_BASE = "technical-profile-3p"
+VARIANT_SUFFIXES = {
+    ".document.json",
+    ".provenance.json",
+    ".validation.json",
+    ".audit.md",
+    ".md",
+    ".txt",
+    ".html",
+    ".pdf",
+    ".preview.png",
+}
 BASE_OUTPUT_FILES = {
     "run.json",
     "source-manifest.json",
@@ -32,17 +48,15 @@ BASE_OUTPUT_FILES = {
     "evidence-map.json",
     "gaps.json",
     "application-recommendation.json",
-    "provenance.json",
     "confirmation-questions.md",
-    "audit-report.md",
-    "resume-document.json",
-    "resume-targeted.md",
-    "resume-ats.txt",
-    "resume.html",
-    "resume.pdf",
-    "resume-preview.png",
     "interview-questions.md",
+    "role-dossier-ir.json",
+    "resume-variants.json",
 }
+
+
+def _variant_files(base_name: str) -> set[str]:
+    return {base_name + suffix for suffix in VARIANT_SUFFIXES}
 FORBIDDEN_SECRET = "TOKEN-FICTIONAL-DO-NOT-USE-7QX"
 CJK = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]")
 
@@ -75,10 +89,29 @@ def _assert_no_body_keys(value: object) -> None:
             _assert_no_body_keys(item)
 
 
-def _assert_full_contract(run_dir: Path, *, handoff: bool) -> None:
+def _assert_full_contract(
+    run_dir: Path,
+    *,
+    handoff: bool,
+    extended: bool = False,
+) -> None:
     assert run_dir.is_dir()
-    assert BASE_OUTPUT_FILES <= {path.name for path in run_dir.iterdir()}
-    assert set(DOSSIER_FILES) == {path.name for path in (run_dir / "role-dossier").iterdir()}
+    variant_bases = set(DEFAULT_VARIANT_BASES)
+    if extended:
+        variant_bases.add(EXTENDED_VARIANT_BASE)
+    expected = BASE_OUTPUT_FILES | {
+        filename
+        for base_name in variant_bases
+        for filename in _variant_files(base_name)
+    }
+    names = {path.name for path in run_dir.iterdir()}
+    assert expected <= names
+    assert (
+        EXTENDED_VARIANT_BASE + ".document.json" in names
+    ) is extended
+    assert set(DOSSIER_FILES) == {
+        path.name for path in (run_dir / "role-dossier").iterdir()
+    }
     assert (run_dir / "roadmap-handoff.json").exists() is handoff
 
     for path in run_dir.rglob("*"):
@@ -90,7 +123,7 @@ def _assert_full_contract(run_dir: Path, *, handoff: bool) -> None:
             assert path.stat().st_size > 0 or path.name == "jd-snapshot.md"
     assert stat.S_IMODE(run_dir.stat().st_mode) == 0o700
 
-    for filename in (
+    json_files = [
         "run.json",
         "source-manifest.json",
         "target-context.json",
@@ -100,11 +133,31 @@ def _assert_full_contract(run_dir: Path, *, handoff: bool) -> None:
         "evidence-map.json",
         "gaps.json",
         "application-recommendation.json",
-        "provenance.json",
-        "resume-document.json",
         "role-dossier-ir.json",
-    ):
+        "resume-variants.json",
+        *(
+            base_name + suffix
+            for base_name in variant_bases
+            for suffix in (
+                ".document.json",
+                ".provenance.json",
+                ".validation.json",
+            )
+        ),
+    ]
+    for filename in json_files:
         _json(run_dir / filename)
+    requirements = _json(run_dir / "requirements.json")
+    mappings = _json(run_dir / "evidence-map.json")
+    assert all(
+        not item["requirement_id"].startswith("resume-discovery-")
+        and item.get("category") != "resume-discovery"
+        for item in requirements
+    )
+    assert all(
+        not mapping["requirement_id"].startswith("resume-discovery-")
+        for mapping in mappings
+    )
     _assert_no_body_keys(_json(run_dir / "source-manifest.json"))
     persisted_dossier = _json(run_dir / "role-dossier-ir.json")
     _assert_no_body_keys(persisted_dossier)
@@ -144,15 +197,21 @@ def _expected_pdf_sequence(document: dict[str, object]) -> list[str]:
     return [label for section, label in labels.items() if document.get(section)] + (["Links"] if document["contact"].get("links") else [])
 
 
-def _assert_real_pdf(run_dir: Path, *, max_pages: int) -> None:
-    pdf_path = run_dir / "resume.pdf"
-    preview_path = run_dir / "resume-preview.png"
-    resume = _json(run_dir / "resume-document.json")
-    visible = (run_dir / "resume-ats.txt").read_text(encoding="utf-8")
+def _assert_real_pdf(
+    run_dir: Path,
+    base_name: str,
+    *,
+    max_pages: int,
+    min_pages: int = 1,
+) -> None:
+    pdf_path = run_dir / f"{base_name}.pdf"
+    preview_path = run_dir / f"{base_name}.preview.png"
+    resume = _json(run_dir / f"{base_name}.document.json")
+    visible = (run_dir / f"{base_name}.txt").read_text(encoding="utf-8")
 
     with pymupdf.open(pdf_path) as pdf:
         assert pdf.is_pdf and not pdf.is_encrypted
-        assert 1 <= pdf.page_count <= max_pages
+        assert min_pages <= pdf.page_count <= max_pages
         extracted = "\n".join(page.get_text("text", sort=True) for page in pdf)
         assert extracted.strip()
         assert "�" not in extracted
@@ -230,7 +289,7 @@ def test_tier_a_complete_jd_full_run_direct_mapping_pdf_and_source_isolation(syn
             "generate", "--source", str(synthetic_db_copy),
             "--company", "acme-cloudworks",
             "--role", "acme-cloudworks-platform-engineer",
-            "--jd-text", jd, "--pages", "2", "--template", "ats-simple",
+            "--jd-text", jd, "--template", "ats-simple",
             "--output", str(output_root),
         ],
         capsys,
@@ -253,7 +312,20 @@ def test_tier_a_complete_jd_full_run_direct_mapping_pdf_and_source_isolation(syn
         (mapping["resume_priority"] for mapping in mappings), reverse=True
     )
     assert payload["summary"]["target_basis"] == "exact-current-jd"
-    _assert_real_pdf(run_dir, max_pages=2)
+    assert set(payload["summary"]["variants"]) == {
+        "recruiter-one-page",
+        "technical-two-page",
+    }
+    _assert_real_pdf(
+        run_dir,
+        "resume-recruiter-1p",
+        max_pages=1,
+    )
+    _assert_real_pdf(
+        run_dir,
+        "resume-technical-2p",
+        max_pages=2,
+    )
     assert _source_snapshot(synthetic_db_copy) == source_before
     assert not run_dir.is_relative_to(synthetic_db_copy)
 
@@ -278,9 +350,9 @@ def test_tier_b_partial_role_full_run_null_coverage_limitations_and_explicit_han
             source_root=synthetic_db_copy,
             company_ref=company,
             role_ref=role,
-            target_pages=2,
             template="human-readable",
             export_roadmap_handoff=True,
+            include_extended_profile=True,
             output_root=output_root,
         )
     )
@@ -288,7 +360,7 @@ def test_tier_b_partial_role_full_run_null_coverage_limitations_and_explicit_han
     run_dir = result.run_dir
     payload = result.model_dump(mode="json")
 
-    _assert_full_contract(run_dir, handoff=True)
+    _assert_full_contract(run_dir, handoff=True, extended=True)
     target = _json(run_dir / "target-context.json")
     assert target["target_basis"] == "exact-role-partial-evidence"
     assert target["jd_completeness"] in {"partial", "stale"}
@@ -297,13 +369,29 @@ def test_tier_b_partial_role_full_run_null_coverage_limitations_and_explicit_han
     assert target["limitations"]
     assert target["staleness_risk"] in {"high", "unknown"}
     assert payload["summary"]["limitations"] == target["limitations"]
-    audit_text = (run_dir / "audit-report.md").read_text(encoding="utf-8")
+    audit_text = (
+        run_dir / "resume-technical-2p.audit.md"
+    ).read_text(encoding="utf-8")
     assert "Target basis: `exact-role-partial-evidence`" in audit_text
     assert all(f"Limitation: {limitation}" in audit_text for limitation in target["limitations"])
     requirements = _json(run_dir / "requirements.json")
     assert all(not item["hard_gate"] for item in requirements if item["origin"] == "inferred")
     assert (run_dir / "roadmap-handoff.json").is_file()
-    _assert_real_pdf(run_dir, max_pages=2)
+    _assert_real_pdf(
+        run_dir,
+        "resume-recruiter-1p",
+        max_pages=1,
+    )
+    _assert_real_pdf(
+        run_dir,
+        "resume-technical-2p",
+        max_pages=2,
+    )
+    _assert_real_pdf(
+        run_dir,
+        "technical-profile-3p",
+        max_pages=3,
+    )
     assert _source_snapshot(synthetic_db_copy) == source_before
     assert not run_dir.is_relative_to(synthetic_db_copy)
 

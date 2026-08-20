@@ -20,6 +20,7 @@ from .html import render_html
 class PdfRenderResult:
     pdf_path: Path
     preview_paths: tuple[Path, ...]
+    document: Any
     attempts: int = 1
     validation: Any | None = None
 
@@ -130,7 +131,7 @@ def render_pdf(
         raise RuntimeError("Chromium did not produce a non-empty PDF")
     os.chmod(output, 0o600)
     previews = _render_previews(output, preview_path, preview_dpi) if preview_path is not None else ()
-    return PdfRenderResult(output, previews)
+    return PdfRenderResult(output, previews, document=document)
 
 
 def render_with_compaction(
@@ -161,8 +162,18 @@ def render_with_compaction(
             preview_path=preview_path,
             margin_mm=margin_mm,
         )
+        if last is not None:
+            stale_previews = set(last.preview_paths) - set(rendered.preview_paths)
+            for stale_preview in stale_previews:
+                stale_preview.unlink(missing_ok=True)
         report = inspect_pdf(rendered.pdf_path, inspection_config)
-        last = PdfRenderResult(rendered.pdf_path, rendered.preview_paths, attempt, report)
+        last = PdfRenderResult(
+            pdf_path=rendered.pdf_path,
+            preview_paths=rendered.preview_paths,
+            document=current,
+            attempts=attempt,
+            validation=report,
+        )
         if last.success:
             return last
         if attempt == max_attempts:

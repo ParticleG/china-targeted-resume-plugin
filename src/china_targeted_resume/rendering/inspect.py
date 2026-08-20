@@ -27,6 +27,7 @@ _DATE_LINE_RE = re.compile(
 @dataclass(frozen=True, slots=True)
 class InspectionConfig:
     target_pages: int = 2
+    minimum_pages: int = 1
     expected_name: str = ""
     expected_headings: tuple[str, ...] = ()
     expected_links: tuple[str, ...] = ()
@@ -36,8 +37,8 @@ class InspectionConfig:
     require_https_link: bool = True
 
     def __post_init__(self) -> None:
-        if not 1 <= self.target_pages <= 6:
-            raise ValueError("target_pages must be between 1 and 6")
+        if not 1 <= self.minimum_pages <= self.target_pages <= 6:
+            raise ValueError("page bounds must satisfy 1 <= minimum_pages <= target_pages <= 6")
         if not 10 <= self.minimum_body_font_pt <= 16:
             raise ValueError("minimum_body_font_pt must be between 10 and 16")
         if not 12 <= self.minimum_margin_mm <= 30:
@@ -103,7 +104,8 @@ def inspect_pdf(path: str | Path, config: InspectionConfig | Mapping[str, Any]) 
                 pages=document.page_count,
             )
         page_count = document.page_count
-        _check(checks, errors, "page_limit", 0 < page_count <= config.target_pages, f"PDF has {page_count} pages; target is at most {config.target_pages}")
+        _check(checks, errors, "page_minimum", page_count >= config.minimum_pages, f"PDF has {page_count} pages; target is at least {config.minimum_pages}")
+        _check(checks, errors, "page_limit", page_count <= config.target_pages, f"PDF has {page_count} pages; target is at most {config.target_pages}")
 
         for page_number, page in enumerate(document):
             width, height = float(page.rect.width), float(page.rect.height)

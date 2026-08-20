@@ -41,7 +41,7 @@ def _parser() -> argparse.ArgumentParser:
     jd.add_argument("--jd-file", type=_path, help="Offline UTF-8 JD file (maximum 2 MiB).")
     jd.add_argument("--jd-url", help="Explicit HTTPS JD URL to fetch with size/time bounds.")
     generate.add_argument("--mode", choices=[item.value for item in OutputMode], default=OutputMode.TARGETED_APPLICATION.value, help="Disclosure/output context (default: targeted_application).")
-    generate.add_argument("--pages", type=int, default=2, choices=range(1, 7), metavar="1-6", help="Target PDF page count (default: 2).")
+    generate.add_argument("--include-extended-profile", action="store_true", help="Also generate the opt-in extended three-page profile.")
     generate.add_argument("--template", choices=("ats-simple", "human-readable"), default="ats-simple", help="Local rendering template (default: ats-simple).")
     generate.add_argument("--output", type=_path, required=True, help="Output root, separate from the source root.")
     generate.add_argument("--language", default="zh-CN", help="Resume locale (default: zh-CN).")
@@ -73,7 +73,7 @@ def _parser() -> argparse.ArgumentParser:
 
     inspect = commands.add_parser("inspect-pdf", help="Inspect an existing PDF independently.")
     inspect.add_argument("--pdf", type=_path, required=True, help="PDF path.")
-    inspect.add_argument("--pages", type=int, default=2, choices=range(1, 7), metavar="1-6", help="Expected page count (default: 2).")
+    inspect.add_argument("--max-pages", type=int, default=2, choices=range(1, 7), metavar="1-6", help="Maximum pages to inspect (default: 2).")
     inspect.add_argument("--expected-name", default="", help="Optional candidate name expected in extracted PDF text.")
     return parser
 
@@ -86,7 +86,7 @@ def _request_from_generate(args: argparse.Namespace) -> RunRequest:
         jd=JdInput(text=args.jd_text, file=args.jd_file, url=args.jd_url),
         output_mode=args.mode,
         language=args.language,
-        target_pages=args.pages,
+        include_extended_profile=args.include_extended_profile,
         template=args.template,
         output_root=args.output,
         export_roadmap_handoff=args.export_roadmap_handoff,
@@ -118,7 +118,7 @@ def _dispatch(args: argparse.Namespace, pipeline: Pipeline) -> PipelineResult | 
     if args.command == "render":
         return pipeline.render(args.document, args.output)
     if args.command == "inspect-pdf":
-        return pipeline.inspect_pdf(args.pdf, pages=args.pages, expected_name=args.expected_name)
+        return pipeline.inspect_pdf(args.pdf, max_pages=args.max_pages, expected_name=args.expected_name)
     raise PipelineError(f"unsupported command: {args.command}")
 
 
