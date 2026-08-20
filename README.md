@@ -9,20 +9,31 @@ The repository is both:
 
 ## What it produces
 
-A successful generation creates a new, non-overwriting run directory under the requested output root:
+A successful generation creates a new, non-overwriting run directory under the requested output root. The default run contains a recruiter one-page resume and a technical two-page resume:
 
 ```text
 OUTPUT_ROOT/
 └── company-slug--role-slug--YYYYMMDDTHHMMSSffffffZ/
-    ├── resume-targeted.md
-    ├── resume-ats.txt
-    ├── resume-document.json
-    ├── resume.html
-    ├── resume.pdf
-    ├── resume-preview.png
-    ├── audit-report.md
-    ├── content-validation.json
-    ├── provenance.json
+    ├── resume-variants.json
+    ├── resume-recruiter-1p.document.json
+    ├── resume-recruiter-1p.provenance.json
+    ├── resume-recruiter-1p.validation.json
+    ├── resume-recruiter-1p.audit.md
+    ├── resume-recruiter-1p.md
+    ├── resume-recruiter-1p.txt
+    ├── resume-recruiter-1p.html
+    ├── resume-recruiter-1p.pdf
+    ├── resume-recruiter-1p.preview.png
+    ├── resume-technical-2p.document.json
+    ├── resume-technical-2p.provenance.json
+    ├── resume-technical-2p.validation.json
+    ├── resume-technical-2p.audit.md
+    ├── resume-technical-2p.md
+    ├── resume-technical-2p.txt
+    ├── resume-technical-2p.html
+    ├── resume-technical-2p.pdf
+    ├── resume-technical-2p.preview.png
+    ├── resume-technical-2p.preview-2.png
     ├── requirements.json
     ├── competencies.json
     ├── evidence-map.json
@@ -35,6 +46,8 @@ OUTPUT_ROOT/
     ├── run.json
     └── role-dossier/
 ```
+
+The first preview page uses `<base>.preview.png`; additional pages use `<base>.preview-2.png`, `<base>.preview-3.png`, and so on. Passing `--include-extended-profile` adds the same per-variant artifact family with base name `technical-profile-3p`. `resume-variants.json` is the authoritative discovery manifest: it lists every generated variant, its page target and actual page count, validation results, artifact paths, and preview paths. Consumers should read the manifest rather than infer filenames.
 
 Runs are not deleted automatically. Each invocation gets a UTC timestamped directory so an earlier run is never silently overwritten.
 
@@ -123,7 +136,6 @@ uv run china-targeted-resume generate \
   --jd-file /path/to/job-description.md \
   --mode targeted_application \
   --language zh-CN \
-  --pages 2 \
   --template ats-simple \
   --output "$OUTPUT_ROOT"
 ```
@@ -138,12 +150,26 @@ uv run china-targeted-resume generate \
   --jd-url https://jobs.example.invalid/ROLE \
   --mode targeted_application \
   --language zh-CN \
-  --pages 2 \
   --template ats-simple \
   --output "$OUTPUT_ROOT"
 ```
 
 The command prints JSON containing `run_dir` and the generated artifact paths. Keep `run_dir`; follow-up validation and refresh commands use it.
+
+Generation always emits `resume-recruiter-1p` and `resume-technical-2p`. To also emit the extended three-page profile, add:
+
+```bash
+uv run china-targeted-resume generate \
+  --source "$SOURCE_ROOT" \
+  --company COMPANY \
+  --role "ROLE TITLE" \
+  --jd-file /path/to/job-description.md \
+  --mode targeted_application \
+  --language zh-CN \
+  --template ats-simple \
+  --include-extended-profile \
+  --output "$OUTPUT_ROOT"
+```
 
 ## Tutorial: generate when only the role is known
 
@@ -156,7 +182,6 @@ uv run china-targeted-resume generate \
   --role "ROLE TITLE" \
   --mode targeted_application \
   --language zh-CN \
-  --pages 2 \
   --template human-readable \
   --output "$OUTPUT_ROOT"
 ```
@@ -178,28 +203,33 @@ uv run china-targeted-resume validate-content \
   --run "$RUN_DIR"
 ```
 
-Inspect the PDF independently:
+Inspect each generated PDF independently with its exact page ceiling:
 
 ```bash
 uv run china-targeted-resume inspect-pdf \
-  --pdf "$RUN_DIR/resume.pdf" \
-  --pages 2 \
+  --pdf "$RUN_DIR/resume-recruiter-1p.pdf" \
+  --max-pages 1 \
+  --expected-name "CANDIDATE NAME"
+
+uv run china-targeted-resume inspect-pdf \
+  --pdf "$RUN_DIR/resume-technical-2p.pdf" \
+  --max-pages 2 \
   --expected-name "CANDIDATE NAME"
 ```
 
-`--pages` is the accepted page ceiling. A one-page PDF passes when the ceiling is two pages.
+If the extended profile was requested, inspect `technical-profile-3p.pdf` with `--max-pages 3`.
 
-Open these files for human review:
+Use `resume-variants.json` to discover the variants and open each variant's Markdown, PDF, previews, audit, provenance, and validation JSON. For example:
 
 ```text
-RUN_DIR/resume-targeted.md
-RUN_DIR/resume.pdf
-RUN_DIR/resume-preview.png
-RUN_DIR/audit-report.md
-RUN_DIR/content-validation.json
+RUN_DIR/resume-variants.json
+RUN_DIR/resume-recruiter-1p.pdf
+RUN_DIR/resume-recruiter-1p.validation.json
+RUN_DIR/resume-technical-2p.pdf
+RUN_DIR/resume-technical-2p.validation.json
 ```
 
-A run is complete only when the content audit has no errors, PDF inspection succeeds, and the preview has no clipping, overlap, broken CJK text, malformed bullets, or audit/provenance language in visible resume sections.
+A run is complete only when every listed variant has a successful content audit and PDF inspection, and every preview has no clipping, overlap, broken CJK text, malformed bullets, or audit/provenance language in visible resume sections.
 
 ## Tutorial: rebuild individual stages
 
@@ -210,15 +240,15 @@ uv run china-targeted-resume build-evidence-map \
   --run "$RUN_DIR"
 ```
 
-Render an existing canonical resume document again:
+Render one existing variant document again:
 
 ```bash
 uv run china-targeted-resume render \
-  --document "$RUN_DIR/resume-document.json" \
-  --output "$RUN_DIR/resume.pdf"
+  --document "$RUN_DIR/resume-technical-2p.document.json" \
+  --output "$RUN_DIR/resume-technical-2p.pdf"
 ```
 
-The output directory must remain private and must not traverse a symlink.
+The output directory must remain private and must not traverse a symlink. After rendering, inspect that PDF with the variant's exact `--max-pages` value.
 
 ## Tutorial: analyze a request JSON
 
@@ -241,7 +271,7 @@ Example:
   },
   "output_mode": "targeted_application",
   "language": "zh-CN",
-  "target_pages": 2,
+  "include_extended_profile": false,
   "template": "ats-simple",
   "persist_role_research": false,
   "refresh_external_sources": false,
@@ -290,7 +320,7 @@ uv run china-targeted-resume export-roadmap-handoff \
 
 This command exports confirmed gaps. It does not create a learning plan and does not change current evidence states.
 
-## Output modes and templates
+## Output modes, variants, and templates
 
 Output modes:
 
@@ -298,12 +328,18 @@ Output modes:
 - `public_portfolio`: excludes application-only material and private contact details where required.
 - `master_resume`: builds a broader evidence-backed resume without pretending that an insufficient target is an exact role.
 
+Variants:
+
+- `resume-recruiter-1p`: concise one-page recruiter scan, always generated.
+- `resume-technical-2p`: two-page technical resume, always generated.
+- `technical-profile-3p`: extended three-page technical profile, generated only with `--include-extended-profile`.
+
+Each variant is composed independently for its reader and configured page target; it is not one document rendered at several arbitrary page limits. When source evidence is too sparse to support the target without padding, the manifest marks the variant `underfilled` and the validated PDF may use fewer pages.
+
 Templates:
 
 - `ats-simple`: conservative single-column ATS layout.
 - `human-readable`: the same semantic reading order with a more reader-oriented visual treatment.
-
-Page limits are integers from 1 through 6. Content is compacted semantically before typography is reduced, and configured minimum font and margin limits remain enforced.
 
 ## Using the OMP Skill
 
@@ -313,9 +349,10 @@ Example prompt:
 
 ```text
 Use my career knowledge base at /path/to/career-db and the JD at
-/path/to/job-description.md to generate a two-page zh-CN ATS resume for
-Company A's exact AI Infrastructure Engineer role. Save all artifacts under
-/path/to/private-output and report the content and PDF audit results.
+/path/to/job-description.md to generate the default recruiter and technical
+zh-CN ATS resumes for Company A's exact AI Infrastructure Engineer role.
+Also include the extended technical profile. Save all artifacts under
+/path/to/private-output and report every variant's content and PDF audit results.
 ```
 
 The Skill should resolve the target tier, run the CLI, ask only material confirmation questions, and report the timestamped run directory. It must not write generated resume text back to `personal-data/`.
@@ -370,7 +407,7 @@ For example:
 └── company-slug--role-slug--YYYYMMDDTHHMMSSffffffZ/
 ```
 
-Each run contains its resume, PDF, preview, audit, provenance, evidence mapping, and role dossier. The pipeline does not remove runs after tests.
+Each run contains shared analysis artifacts plus independently composed resume variants. Discover them through `resume-variants.json`; each listed variant has its own document, Markdown, ATS text, HTML, PDF, previews, provenance, audit, and validation report.
 
 If a file manager does not show the directory:
 
@@ -413,9 +450,9 @@ Generated files are automatically restricted to mode `0600`.
 
 Run `list-companies` and `list-roles`, then pass an exact returned identifier. The pipeline intentionally does not guess among multiple matches.
 
-### The PDF exists but validation fails
+### A PDF exists but validation fails
 
-Read `content-validation.json` and `audit-report.md`, fix source-backed content or rendering problems, then rerun `validate-content`, `render`, and `inspect-pdf`. File existence alone is not acceptance.
+Open `resume-variants.json`, then read the failing variant's `<base>.validation.json` and `<base>.audit.md`. Fix source-backed content or rendering problems, rerun `validate-content`, render the affected `<base>.document.json`, and inspect its PDF with the exact page ceiling (`1`, `2`, or `3`). File existence alone is not acceptance.
 
 ## Further documentation
 

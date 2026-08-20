@@ -23,14 +23,14 @@ Orchestrate the deterministic `china-targeted-resume` CLI and use language reaso
 
 ## Start here
 
-1. Identify the source root, requested output mode, target company/role, JD source, page count, template, and output root from the request.
+1. Identify the source root, requested output mode, target company/role, JD source, whether the optional extended profile is wanted, template, and output root from the request. The recruiter one-page and technical two-page variants are always generated.
 2. Read [source-adapter.md](references/source-adapter.md) before discovering or searching a career repository.
 3. If the target is ambiguous, use `list-companies` and `list-roles`, present the choices, and stop for selection. Never silently pick among multiple candidates.
 4. Read [role-resolution.md](references/role-resolution.md), resolve Tier A-D, and record the exact `target_basis`.
 5. Load only the detailed references required by the workflow below.
-6. Run the CLI operation. Treat its structured artifacts as the execution record.
+6. Run the CLI operation. Treat `resume-variants.json` as the authoritative artifact discovery manifest.
 7. Ask only high-value confirmation questions, then continue or omit unresolved claims.
-8. Run deterministic content and PDF validation before reporting success.
+8. Run deterministic content and PDF validation for every generated variant before reporting success.
 
 ## Stop or confirm
 
@@ -79,12 +79,12 @@ china-targeted-resume generate \
   --role ROLE \
   [--jd-text JD_TEXT | --jd-file JD_FILE | --jd-url JD_URL] \
   --mode targeted_application \
-  --pages 2 \
+  [--include-extended-profile] \
   --template ats-simple \
   --output OUTPUT_ROOT
 ```
 
-Add `--export-roadmap-handoff` only when the user explicitly asks for that handoff. Prefer the separate export command after gaps have been reviewed.
+The default output is `resume-recruiter-1p` plus `resume-technical-2p`. Add `--include-extended-profile` only when the user wants the opt-in `technical-profile-3p`. Add `--export-roadmap-handoff` only when the user explicitly asks for that handoff; prefer the separate export command after gaps have been reviewed.
 
 Analyze and refresh:
 
@@ -108,9 +108,13 @@ Run deterministic stages directly when diagnosing or completing a run:
 ```bash
 china-targeted-resume build-evidence-map --run RUN_DIR
 china-targeted-resume validate-content --run RUN_DIR
-china-targeted-resume render --document RUN_DIR/resume-document.json [--output RUN_DIR/resume.pdf]
-china-targeted-resume inspect-pdf --pdf RUN_DIR/resume.pdf
+china-targeted-resume render --document RUN_DIR/resume-technical-2p.document.json --output RUN_DIR/resume-technical-2p.pdf
+china-targeted-resume inspect-pdf --pdf RUN_DIR/resume-recruiter-1p.pdf --max-pages 1
+china-targeted-resume inspect-pdf --pdf RUN_DIR/resume-technical-2p.pdf --max-pages 2
+china-targeted-resume inspect-pdf --pdf RUN_DIR/technical-profile-3p.pdf --max-pages 3
 ```
+
+Discover generated variants from `RUN_DIR/resume-variants.json`; do not infer their presence from filenames. Render or inspect the three-page artifact only when its manifest entry exists. Each variant's `.validation.json`, `.audit.md`, provenance, and PDF result must pass independently.
 
 ## Workflow: exact JD
 
@@ -120,7 +124,7 @@ china-targeted-resume inspect-pdf --pdf RUN_DIR/resume.pdf
 4. Build the complete requirement-to-evidence matrix and report explicit coverage with its calculation.
 5. Confirm selected P2 material and uncertain high-impact claims.
 6. If the requested output language differs from selected source prose, translate only the run-local visible strings under the rule above; never translate by strengthening or summarizing a claim.
-7. Generate, validate, render, and inspect. Confirm the requested language is actually present in extracted PDF text. A PDF file existing is not success; every acceptance check must pass.
+7. Generate both default variants and the optional extended variant when requested; validate, render, and inspect each one against its manifest page contract. Treat a successful sparse `underfilled` variant as an explicit limitation rather than padding it to the target. Confirm the requested language is actually present in extracted PDF text. A PDF file existing is not success; every acceptance check must pass.
 
 ## Workflow: role only
 
@@ -129,7 +133,7 @@ china-targeted-resume inspect-pdf --pdf RUN_DIR/resume.pdf
 3. Continue generation; set `explicit_requirement_coverage` and `coverage_calculation` to null.
 4. Mark missing requirements, source age, conflicts, inference emphasis, and limitations in audit artifacts, not visible resume prose.
 5. Keep inferred requirements out of hard gates.
-6. Generate and validate the targeted resume and PDF.
+6. Generate the default recruiter and technical variants, add the extended profile only when requested, and validate every generated variant independently.
 
 For Tier C, prefer exact-role choices when available; otherwise create a clearly labeled company/role-family draft only on request, with lower confidence and no role-level coverage claim. For Tier D, list choices and do not emit a misleading match score.
 
@@ -156,9 +160,11 @@ For Tier C, prefer exact-role choices when available; otherwise create a clearly
 
 ## Natural-language examples
 
-**Exact JD:** “Use my career knowledge base at `/path/to/career-db` and this current JD to generate a two-page Chinese resume for Company A’s exact Backend Platform Engineer role, with an ATS PDF and provenance audit.”
+**Exact JD:** “Use my career knowledge base at `/path/to/career-db` and this current JD to generate the default one-page recruiter and two-page technical Chinese resumes for Company A’s exact Backend Platform Engineer role, with ATS PDFs and per-variant provenance audits.”
 
-**Role only:** “I want to apply for Company B’s exact C++ Systems Engineer role, but I only have the role title and old hiring research. Generate the best evidence-backed targeted resume and make the source limitations explicit in the audit.”
+**Extended profile:** “Generate the default resume variants and also include the opt-in three-page technical profile. Validate all three variants against their manifest page contracts.”
+
+**Role only:** “I want to apply for Company B’s exact C++ Systems Engineer role, but I only have the role title and old hiring research. Generate the best evidence-backed targeted resume variants and make the source limitations explicit in each audit.”
 
 **Analyze role:** “Analyze Company C’s AI Infrastructure Engineer opening against my personal career knowledge base and build the seven-file role dossier, but keep it run-local until I approve persistence.”
 
@@ -168,4 +174,4 @@ For Tier C, prefer exact-role choices when available; otherwise create a clearly
 
 ## Completion report
 
-Report the resolved tier and target basis, run directory, produced artifacts, omitted or pending claims, application blockers, audit result, and PDF acceptance result. Mention limitations and source freshness. Never claim ATS passage, interview success, or hiring probability.
+Report the resolved tier and target basis, run directory, `resume-variants.json`, produced variants and artifacts, omitted or pending claims, application blockers, and each variant's content/PDF acceptance results. Mention limitations and source freshness. Never claim ATS passage, interview success, or hiring probability.

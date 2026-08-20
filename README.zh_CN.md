@@ -9,20 +9,31 @@
 
 ## 生成内容
 
-成功生成后，会在指定的输出根目录下创建一个新的、不会覆盖已有内容的运行目录：
+成功生成后，会在指定的输出根目录下创建一个新的、不会覆盖已有内容的运行目录。默认运行会同时生成一页招聘筛选版和两页技术版：
 
 ```text
 OUTPUT_ROOT/
 └── company-slug--role-slug--YYYYMMDDTHHMMSSffffffZ/
-    ├── resume-targeted.md
-    ├── resume-ats.txt
-    ├── resume-document.json
-    ├── resume.html
-    ├── resume.pdf
-    ├── resume-preview.png
-    ├── audit-report.md
-    ├── content-validation.json
-    ├── provenance.json
+    ├── resume-variants.json
+    ├── resume-recruiter-1p.document.json
+    ├── resume-recruiter-1p.provenance.json
+    ├── resume-recruiter-1p.validation.json
+    ├── resume-recruiter-1p.audit.md
+    ├── resume-recruiter-1p.md
+    ├── resume-recruiter-1p.txt
+    ├── resume-recruiter-1p.html
+    ├── resume-recruiter-1p.pdf
+    ├── resume-recruiter-1p.preview.png
+    ├── resume-technical-2p.document.json
+    ├── resume-technical-2p.provenance.json
+    ├── resume-technical-2p.validation.json
+    ├── resume-technical-2p.audit.md
+    ├── resume-technical-2p.md
+    ├── resume-technical-2p.txt
+    ├── resume-technical-2p.html
+    ├── resume-technical-2p.pdf
+    ├── resume-technical-2p.preview.png
+    ├── resume-technical-2p.preview-2.png
     ├── requirements.json
     ├── competencies.json
     ├── evidence-map.json
@@ -35,6 +46,8 @@ OUTPUT_ROOT/
     ├── run.json
     └── role-dossier/
 ```
+
+第一页预览使用 `<base>.preview.png`；后续页面依次使用 `<base>.preview-2.png`、`<base>.preview-3.png` 等名称。传入 `--include-extended-profile` 后，还会增加一套以 `technical-profile-3p` 为基础名的版本产物。`resume-variants.json` 是产物发现的权威清单：其中列出所有已生成版本、目标页数与实际页数、验证结果、产物路径和预览路径。使用方应读取该清单，而不是自行推断文件名。
 
 运行目录不会被自动删除。每次调用都会创建一个带 UTC 时间戳的目录，因此不会静默覆盖之前的运行结果。
 
@@ -122,7 +135,6 @@ uv run china-targeted-resume generate \
   --jd-file /path/to/job-description.md \
   --mode targeted_application \
   --language zh-CN \
-  --pages 2 \
   --template ats-simple \
   --output "$OUTPUT_ROOT"
 ```
@@ -137,12 +149,26 @@ uv run china-targeted-resume generate \
   --jd-url https://jobs.example.invalid/ROLE \
   --mode targeted_application \
   --language zh-CN \
-  --pages 2 \
   --template ats-simple \
   --output "$OUTPUT_ROOT"
 ```
 
 该命令会输出 JSON，其中包含 `run_dir` 和各个生成产物的路径。请保留 `run_dir`；后续验证和刷新命令会用到它。
+
+生成命令始终输出 `resume-recruiter-1p` 和 `resume-technical-2p`。如需同时输出三页扩展技术档案，请添加：
+
+```bash
+uv run china-targeted-resume generate \
+  --source "$SOURCE_ROOT" \
+  --company COMPANY \
+  --role "ROLE TITLE" \
+  --jd-file /path/to/job-description.md \
+  --mode targeted_application \
+  --language zh-CN \
+  --template ats-simple \
+  --include-extended-profile \
+  --output "$OUTPUT_ROOT"
+```
 
 ## 教程：仅知道岗位时生成简历
 
@@ -155,7 +181,6 @@ uv run china-targeted-resume generate \
   --role "ROLE TITLE" \
   --mode targeted_application \
   --language zh-CN \
-  --pages 2 \
   --template human-readable \
   --output "$OUTPUT_ROOT"
 ```
@@ -177,28 +202,33 @@ uv run china-targeted-resume validate-content \
   --run "$RUN_DIR"
 ```
 
-独立检查 PDF：
+使用各版本的确切页数上限，分别独立检查每个 PDF：
 
 ```bash
 uv run china-targeted-resume inspect-pdf \
-  --pdf "$RUN_DIR/resume.pdf" \
-  --pages 2 \
+  --pdf "$RUN_DIR/resume-recruiter-1p.pdf" \
+  --max-pages 1 \
+  --expected-name "CANDIDATE NAME"
+
+uv run china-targeted-resume inspect-pdf \
+  --pdf "$RUN_DIR/resume-technical-2p.pdf" \
+  --max-pages 2 \
   --expected-name "CANDIDATE NAME"
 ```
 
-`--pages` 是可接受的页数上限。当上限为两页时，一页 PDF 也能通过检查。
+如果生成时请求了扩展技术档案，请使用 `--max-pages 3` 检查 `technical-profile-3p.pdf`。
 
-打开以下文件进行人工审阅：
+通过 `resume-variants.json` 发现各版本，并打开每个版本自己的 Markdown、PDF、预览图、审计、来源追踪和验证 JSON。例如：
 
 ```text
-RUN_DIR/resume-targeted.md
-RUN_DIR/resume.pdf
-RUN_DIR/resume-preview.png
-RUN_DIR/audit-report.md
-RUN_DIR/content-validation.json
+RUN_DIR/resume-variants.json
+RUN_DIR/resume-recruiter-1p.pdf
+RUN_DIR/resume-recruiter-1p.validation.json
+RUN_DIR/resume-technical-2p.pdf
+RUN_DIR/resume-technical-2p.validation.json
 ```
 
-只有在内容审计没有错误、PDF 检查成功，并且预览中没有裁切、重叠、CJK 文字损坏、项目符号格式异常，也没有在简历可见区域出现审计或来源追踪措辞时，本次运行才算完成。
+只有清单中每个版本的内容审计和 PDF 检查均成功，并且所有预览中都没有裁切、重叠、CJK 文字损坏、项目符号格式异常，也没有在简历可见区域出现审计或来源追踪措辞时，本次运行才算完成。
 
 ## 教程：单独重建各个阶段
 
@@ -209,15 +239,15 @@ uv run china-targeted-resume build-evidence-map \
   --run "$RUN_DIR"
 ```
 
-重新渲染已有的规范化简历文档：
+重新渲染某个已有版本的规范化文档：
 
 ```bash
 uv run china-targeted-resume render \
-  --document "$RUN_DIR/resume-document.json" \
-  --output "$RUN_DIR/resume.pdf"
+  --document "$RUN_DIR/resume-technical-2p.document.json" \
+  --output "$RUN_DIR/resume-technical-2p.pdf"
 ```
 
-输出目录必须保持私密，并且不能通过符号链接穿越路径边界。
+输出目录必须保持私密，并且不能通过符号链接穿越路径边界。渲染后，应使用该版本对应的确切 `--max-pages` 值检查 PDF。
 
 ## 教程：分析请求 JSON
 
@@ -240,7 +270,7 @@ uv run china-targeted-resume render \
   },
   "output_mode": "targeted_application",
   "language": "zh-CN",
-  "target_pages": 2,
+  "include_extended_profile": false,
   "template": "ats-simple",
   "persist_role_research": false,
   "refresh_external_sources": false,
@@ -289,7 +319,7 @@ uv run china-targeted-resume export-roadmap-handoff \
 
 该命令会导出已确认的差距，但不会创建学习计划，也不会更改当前证据状态。
 
-## 输出模式和模板
+## 输出模式、版本和模板
 
 输出模式：
 
@@ -297,12 +327,18 @@ uv run china-targeted-resume export-roadmap-handoff \
 - `public_portfolio`：排除仅限求职申请的材料，并按要求排除私密联系方式。
 - `master_resume`：生成更广泛、以证据为依据的简历，不会把信息不足的目标伪装成确切岗位。
 
+输出版本：
+
+- `resume-recruiter-1p`：供招聘人员快速筛选的一页版，始终生成。
+- `resume-technical-2p`：两页技术版，始终生成。
+- `technical-profile-3p`：三页扩展技术档案，仅在传入 `--include-extended-profile` 时生成。
+
+每个版本都会针对不同读者和自己的页数目标独立编排内容；它们并非同一文档按任意页数重复渲染。当源证据不足以在不填充内容的前提下支撑目标页数时，清单会将该版本标记为 `underfilled`，通过验证的 PDF 也可能少于目标页数。
+
 模板：
 
 - `ats-simple`：保守的单栏 ATS 布局。
 - `human-readable`：保持相同的语义阅读顺序，但采用更面向人工阅读的视觉呈现。
-
-页数限制必须是 1 到 6 之间的整数。系统会先从语义层面压缩内容，再缩小排版尺寸；同时会继续强制执行已配置的最小字号和页边距限制。
 
 ## 使用 OMP Skill
 
@@ -311,10 +347,10 @@ uv run china-targeted-resume export-roadmap-handoff \
 示例提示词：
 
 ```text
-Use my career knowledge base at /path/to/career-db and the JD at
-/path/to/job-description.md to generate a two-page zh-CN ATS resume for
-Company A's exact AI Infrastructure Engineer role. Save all artifacts under
-/path/to/private-output and report the content and PDF audit results.
+使用 /path/to/career-db 下的职业知识库和 /path/to/job-description.md
+中的 JD，为公司 A 的确切 AI 基础设施工程师岗位生成默认的一页招聘筛选版
+和两页技术版 zh-CN ATS 简历，同时包含扩展技术档案。将所有产物保存到
+/path/to/private-output，并报告每个版本的内容审计和 PDF 检查结果。
 ```
 
 Skill 应解析目标层级、运行 CLI、仅提出会对结果产生实质影响的确认问题，并报告带时间戳的运行目录。它不得将生成的简历文本写回 `personal-data/`。
@@ -369,7 +405,7 @@ Skill Creator 评估工作流会创建一个同级目录，例如：
 └── company-slug--role-slug--YYYYMMDDTHHMMSSffffffZ/
 ```
 
-每次运行都包含简历、PDF、预览、审计、来源追踪、证据映射和岗位档案。流水线不会在测试后删除运行结果。
+每次运行都包含共享分析产物和独立编排的简历版本。请通过 `resume-variants.json` 发现这些版本；清单中的每个版本都有自己的文档、Markdown、ATS 文本、HTML、PDF、预览图、来源追踪、审计和验证报告。
 
 如果文件管理器中没有显示该目录：
 
@@ -414,7 +450,7 @@ chmod 700 "$OUTPUT_ROOT"
 
 ### PDF 已存在，但验证失败
 
-阅读 `content-validation.json` 和 `audit-report.md`，修复有来源支持的内容问题或渲染问题，然后重新运行 `validate-content`、`render` 和 `inspect-pdf`。仅有文件存在并不代表验收通过。
+打开 `resume-variants.json`，再阅读失败版本对应的 `<base>.validation.json` 和 `<base>.audit.md`。修复有来源支持的内容问题或渲染问题，重新运行 `validate-content`，渲染受影响的 `<base>.document.json`，并以确切页数上限（`1`、`2` 或 `3`）检查其 PDF。仅有文件存在并不代表验收通过。
 
 ## 更多文档
 
