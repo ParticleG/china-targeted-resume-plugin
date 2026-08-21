@@ -75,14 +75,14 @@ Plugin 的 OMP 兼容性下限是 `17.3.7`；此外还需要 Bun `1.3.0` 或更�
 omp plugin link /absolute/path/to/china-targeted-resume-plugin --force
 ```
 
-获得授权并发布 GitHub 仓库后，使用同一远程源安装和更新：
+使用已发布的 GitHub 源安装或刷新：
 
 ```bash
-omp plugin install github:OWNER/REPOSITORY
-omp plugin install github:OWNER/REPOSITORY --force
+omp plugin install github:ParticleG/china-targeted-resume-plugin
+omp plugin install github:ParticleG/china-targeted-resume-plugin --force
 ```
 
-当前本地仓库尚未通过远程 GitHub 安装、记录源更新和全新项目外会话发现；这些仍属于发布后的外部门禁。本地链接结果不能替代该门禁。
+GitHub 安装、`.bun-tag` 中记录的远程源/提交、强制刷新，以及全新项目外 `/resume-status` 发现均已在 OMP `17.3.7` 上验证；详见 `docs/migration-decision-log.md`。
 
 Python 后端 Plugin 工具会通过 `uv run --project PLUGIN_ROOT --offline --frozen china-targeted-resume …` 运行随包检出的源码。请提前准备好锁定的 Python 依赖，并在渲染前安装 Playwright Chromium 与受支持的 CJK 字体。Plugin 安装只负责注册 OMP 组件；它**不会**把 `china-targeted-resume` 加入全局 `PATH`，不会运行 `uv sync`，也不会安装浏览器或字体。只要项目本地桥接命令可用，就不需要全局安装 CLI。
 

@@ -75,14 +75,14 @@ For local development or an unpublished checkout, link the absolute project path
 omp plugin link /absolute/path/to/china-targeted-resume-plugin --force
 ```
 
-After an authorized GitHub repository is published, install and update the same remote source with:
+Install or refresh the published GitHub source with:
 
 ```bash
-omp plugin install github:OWNER/REPOSITORY
-omp plugin install github:OWNER/REPOSITORY --force
+omp plugin install github:ParticleG/china-targeted-resume-plugin
+omp plugin install github:ParticleG/china-targeted-resume-plugin --force
 ```
 
-Remote GitHub installation, recorded-source update, and fresh outside-project discovery are an external publication gate in this local repository; they are not reported as completed. A local link cannot stand in for that gate.
+The GitHub install, recorded `.bun-tag` source/commit, forced refresh, and fresh outside-project `/resume-status` discovery have been verified with OMP `17.3.7`; see `docs/migration-decision-log.md`.
 
 Python-backed Plugin tools run the bundled checkout as `uv run --project PLUGIN_ROOT --offline --frozen china-targeted-resume …`. Provision the locked Python dependencies beforehand, and install Playwright Chromium plus a supported CJK font before rendering. Plugin installation registers OMP components only: it does **not** place `china-targeted-resume` on the global `PATH`, run `uv sync`, or install the browser/fonts. No global CLI installation is required when the project-local bridge command is usable.
 

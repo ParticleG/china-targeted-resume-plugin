@@ -13,9 +13,9 @@ The matrix uses four implementation states:
 - **Ported and switched:** the Plugin tool now invokes the TypeScript implementation after parity fixtures cover the boundary.
 - **Ported primitive:** TypeScript implements the deterministic contract, but a parser-backed or specialist Plugin tool remains Python by design.
 - **Compared and retained:** fixtures pin the observable result, but Python remains the configured backend because a TypeScript replacement is absent or weaker.
-- **External gate:** the command/path is documented, but the local repository cannot truthfully claim the remote result.
+- **External gate:** a command/path that requires a published remote and must remain open until observed. This state currently has no remaining row because the GitHub gate passed.
 
-A command in an evidence field is an executable observation recipe, not an implied result. Record a pass only from observed command output. The last independently recorded baseline before Phase 3 was 175 Python tests, 26 Plugin tests, and an OMP `17.3.7` outside-project local-link/status smoke. GitHub installation/update has never been converted into a local pass.
+A command in an evidence field is an executable observation recipe, not an implied result. Record a pass only from observed command output. The final gate is 203 Python tests, TypeScript typecheck plus 98 Plugin tests, OMP `17.3.7` installed workflow evidence, and the published GitHub install/refresh evidence in `docs/migration-decision-log.md`.
 
 ## Evidence meaning preserved in product data
 
@@ -134,7 +134,7 @@ Every required scenario has a concrete fixture/test evidence path. “Retained P
 | Semantic HTML | Golden HTML projection and end-to-end renderer | Document-to-HTML order | Single-column sections, headings, lists, visible text, and links remain ordered | `uv run pytest -q tests/test_golden_parity.py tests/test_rendering.py tests/test_end_to_end.py` | Retained Python |
 | Real PDF and preview | Real synthetic render/inspection | Chromium render plus PyMuPDF inspection | Actual page/text/link/font/layout/preview checks pass for every listed variant | `uv run pytest -q tests/test_end_to_end.py` | Retained Python/PyMuPDF |
 | Local OMP install/update/discovery | Phase 2 decision-log record | Local link, package discovery, `/resume-status` outside project | OMP `17.3.7` loads six commands, nine tools, Skill, and seven agents | Observed: `omp plugin link … --force`, outside-project `/resume-status`; see `docs/migration-decision-log.md` | Observed local baseline |
-| Remote GitHub install/update | Published `github:OWNER/REPOSITORY` | Installer, recorded remote source, forced refresh, fresh external session | Install/update/discovery must be observed after publication | `omp plugin install github:OWNER/REPOSITORY`; then `omp plugin install github:OWNER/REPOSITORY --force` and outside-project `/resume-status` | External gate; not passed locally |
+| Remote GitHub install/update | `github:ParticleG/china-targeted-resume-plugin`; installed `.bun-tag` | Installer, recorded remote source/commit, forced refresh, fresh external session | GitHub install and forced refresh complete; `/resume-status` loads outside the repository | `omp plugin install github:ParticleG/china-targeted-resume-plugin`; repeat with `--force`; see `docs/migration-decision-log.md` | Observed remote gate passed |
 
 ## Final gate interpretation
 
@@ -145,6 +145,6 @@ A Phase 3 acceptance record is valid only when all of the following are true:
 3. the Python structural, composition, rendering, real-PDF, privacy-mode, permission, non-overwrite, and source-immutability checks pass;
 4. every required variant in `resume-variants.json` has true content-audit and PDF status before the workflow reports completion;
 5. the READMEs and final boundary match the registered tool names and supported runtime floors;
-6. external GitHub status remains explicitly external until publication, even if every local gate passes.
+6. the published GitHub install records its source/commit, forced refresh succeeds, and a fresh outside-project session loads the remote-installed Plugin.
 
-The final boundary does not delete working Python, weaken structural validation, normalize semantic differences, or reinterpret a missing external publication result as success.
+The final boundary does not delete working Python, weaken structural validation, normalize semantic differences, or substitute a local link for remote publication evidence. Both local and GitHub installation paths are observed.

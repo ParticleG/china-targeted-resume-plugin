@@ -83,14 +83,14 @@ A local link follows that checkout. Re-linking with `--force` refreshes recorded
 
 ### Published GitHub source
 
-After an authorized owner/repository is published, install it and explicitly refresh the same remote source with:
+Install it and explicitly refresh the same remote source with:
 
 ```text
-omp plugin install github:OWNER/REPOSITORY
-omp plugin install github:OWNER/REPOSITORY --force
+omp plugin install github:ParticleG/china-targeted-resume-plugin
+omp plugin install github:ParticleG/china-targeted-resume-plugin --force
 ```
 
-OMP must record the Git source and resolved package in its Plugin registry/lock. GitHub install, remote-source locking, forced remote refresh, and a fresh outside-project session remain an **external publication gate** in the current local repository; they are not reported as passed. A local link result cannot substitute for this gate.
+The OMP `17.3.7` gate is observed: direct GitHub install succeeded, `.bun-tag` recorded `ParticleG-china-targeted-resume-plugin-5a2f71e`, forced refresh succeeded, and a fresh `/resume-status` session loaded the remote-installed Plugin from `/tmp`. Direct Git updates use the repeated install command; marketplace-only `omp plugin upgrade` is not this package's update path.
 
 ### Standalone CLI
 

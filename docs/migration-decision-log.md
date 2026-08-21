@@ -110,7 +110,7 @@
 
 **Commit:** Pending repository-owner commit policy.
 
-**Follow-up:** Remote `github:OWNER/REPO` installation, remote update, and a recorded remote source cannot run until this new repository is published. This is the sole external gate; local install/discovery/update behavior is verified and no remote result is claimed.
+**Follow-up:** The repository was subsequently published and the remote install/update gate was executed; see the final entry below.
 
 ## 2026-08-22 — Installed OMP workflow and retention smoke
 
@@ -128,4 +128,14 @@ The run used OMP's built-in `task` runtime for metadata mapping and independent 
 
 **Session audit:** The production JSONL auditor parsed the actual OMP xdev `toolResult` envelopes: 8 authorized disclosed slices, 0 out-of-scope slices, 0 forbidden sentinels, matching owner, retained artifact true, deletion claimed false. The smoke also exposed OMP-created task/advisor artifacts at `0644` under an initially `0755` session directory. The Plugin now requires the session directory to be owner-only `0700` before reviewed authorization and recursively audits task/advisor JSONL/Markdown for symlinks, owners, modes, bounded parsing, receipts, scope, and forbidden content. Group/world-readable child artifacts or incomplete receipt proof fail the audit; the Plugin never chmods OMP-owned storage automatically.
 
-**Follow-up:** OMP's default storage observed in this environment used a `0755` session directory with `0644` child artifacts. Reviewed-semantic mode now correctly refuses that tree; operators must configure or secure OMP session storage to owner-only `0700`/`0600` before authorization. The published-GitHub install/update gate remains external.
+**Follow-up:** OMP's default storage observed in this environment used a `0755` session directory with `0644` child artifacts. Reviewed-semantic mode now correctly refuses that tree; operators must configure or secure OMP session storage to owner-only `0700`/`0600` before authorization.
+
+## 2026-08-22 — GitHub publication and remote update gate
+
+**Decision:** Publish the self-contained Plugin as the public repository `ParticleG/china-targeted-resume-plugin` after explicit user authorization.
+
+**Evidence:** GitHub repository creation and the initial push of commit `5a2f71e` succeeded. `omp plugin install github:ParticleG/china-targeted-resume-plugin` installed version `0.2.0` into the user Plugin directory. The installed `.bun-tag` records `ParticleG-china-targeted-resume-plugin-5a2f71e`, binding the installed package to the remote owner, repository, and commit. Re-running the same GitHub install with `--force` completed the documented remote update path. From `/tmp`, a fresh noninteractive OMP 17.3.7 session consumed `/resume-status` from the remote-installed Plugin.
+
+**Verification:** Remote URL: `https://github.com/ParticleG/china-targeted-resume-plugin`. The Plugin package exposes the Extension, canonical Skill, seven agents, Python project, schemas, and deterministic kernels without recursive Skill links. Plugin installation remains distinct from global Python CLI installation.
+
+**Follow-up:** Re-run the GitHub install with `--force` after future published commits; marketplace-only `omp plugin upgrade` is not the update path for this direct Git source.
