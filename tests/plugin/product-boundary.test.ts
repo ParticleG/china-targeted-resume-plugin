@@ -3,6 +3,7 @@ import { readdir, readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import { RESUME_TOOL_NAMES } from "../../src/plugin/runtime.ts";
+import { RESUME_COMMAND_NAMES } from "../../src/plugin/commands/index.ts";
 
 const ROOT = fileURLToPath(new URL("../../", import.meta.url));
 
@@ -60,7 +61,8 @@ describe("documented Phase 3 product boundary", () => {
     expect(boundary).toContain("OMP `>=17.3.7`");
     expect(boundary).toContain("Bun `>=1.3.0`");
     expect(boundary).toContain("Python `>=3.14`");
-    expect(boundary).toContain("external publication gate");
+    expect(boundary).toContain("ParticleG/china-targeted-resume-plugin");
+    expect(boundary).toContain("gate is observed");
     expect(boundary).toContain("There is no backend preference flag");
     expect(boundary).not.toMatch(/fall(?:s|ing)? back to (?:the )?(?:Python|TypeScript)/i);
   });
@@ -95,6 +97,26 @@ describe("documented Phase 3 product boundary", () => {
     }
     expect(english).not.toContain("typed tools invoke the deterministic Python kernel");
     expect(chinese).not.toContain("类型化工具调用确定性的 Python 内核");
+  });
+
+  test("both READMEs document every registered command and deterministic help", async () => {
+    const english = await readProjectFile("README.md");
+    const chinese = await readProjectFile("README.zh_CN.md");
+    const boundary = await readProjectFile("docs/final-product-boundary.md");
+
+    expect(RESUME_COMMAND_NAMES).toHaveLength(7);
+    for (const command of RESUME_COMMAND_NAMES) {
+      expect(english).toContain(`/${command}`);
+      expect(chinese).toContain(`/${command}`);
+    }
+    for (const readme of [english, chinese]) {
+      expect(readme).toContain("/resume-help [topic]");
+      expect(readme).toContain("resume_validate_source_map");
+      expect(readme).toContain("resume_lock_approved_claims");
+      expect(readme).toContain("resume-variants.json");
+    }
+    expect(boundary).toContain("The seven slash commands");
+    expect(boundary).toContain("model-free");
   });
 
   test("package metadata pins the parity validator, runtime floor, and installed documentation", async () => {

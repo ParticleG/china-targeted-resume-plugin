@@ -86,6 +86,324 @@ The GitHub install, recorded `.bun-tag` source/commit, forced refresh, and fresh
 
 Python-backed Plugin tools run the bundled checkout as `uv run --project PLUGIN_ROOT --offline --frozen china-targeted-resume …`. Provision the locked Python dependencies beforehand, and install Playwright Chromium plus a supported CJK font before rendering. Plugin installation registers OMP components only: it does **not** place `china-targeted-resume` on the global `PATH`, run `uv sync`, or install the browser/fonts. No global CLI installation is required when the project-local bridge command is usable.
 
+## Plugin usage: a five-minute path
+
+This section is the human-facing guide for the installed OMP Plugin. It is intentionally separate from the standalone Python CLI below. The published package is [`ParticleG/china-targeted-resume-plugin`](https://github.com/ParticleG/china-targeted-resume-plugin). Installing it registers the Extension, commands, typed deterministic tools, bundled agents, and Skill; it does **not** provision `uv`, Python, Chromium, CJK fonts, or a global `china-targeted-resume` executable. Use OMP `17.3.7` or newer (and Bun `1.3.0` or newer).
+
+### Five-minute quickstart
+
+1. Install or refresh the published Plugin:
+
+   ```bash
+   omp plugin install github:ParticleG/china-targeted-resume-plugin
+   ```
+
+2. Ask for local help before starting. Help is rendered through `ctx.ui.notify`; it does not invoke a model. Whether a headless or alternate client displays notifications depends on that client.
+
+   ```text
+   /resume-help overview
+   ```
+
+3. Initialize a run. Every run starts **metadata-only**:
+
+   ```text
+   /resume-init demo-metadata
+   ```
+
+4. Discover the read-only source structure:
+
+   ```text
+   /resume-discover /tmp/synthetic-career-db
+   ```
+
+5. Send the target context to the bundled Skill, then ask the Plugin to analyze and generate. This example uses synthetic paths and requests the default recruiter one-page and technical two-page variants; the optional extended profile is not implied.
+
+   ```text
+   Use the bundled china-targeted-resume Skill with source root
+   /tmp/synthetic-career-db, the synthetic JD at /tmp/synthetic-jd.md,
+   company "Example Company", exact role "Platform Engineer", zh-CN,
+   targeted_application mode, ATS output, and output root
+   /tmp/private-resume-output. Keep the source read-only and keep output
+   outside the source root. Generate the default recruiter one-page and
+   technical two-page variants only.
+
+   /resume-analyze demo-metadata
+   /resume-generate demo-metadata
+   ```
+
+6. Copy the exact `resume-variants.json` path reported by the generation workflow, then inspect every manifest-listed variant and review status:
+
+   ```text
+   /resume-audit /tmp/private-resume-output/<run-directory>/resume-variants.json
+   /resume-status demo-metadata
+   ```
+
+   Replace `<run-directory>` with the timestamped directory actually returned by the Skill. Do not infer a variant from a filename or treat a PDF check as a content-audit result.
+
+### Which command should I use?
+
+| Goal | Command | When to use it | Safe boundary |
+| --- | --- | --- | --- |
+| Learn the Plugin locally | `/resume-help [topic]` | Before a run or when a stage is unclear | Local notification only; no model, source read, or state mutation |
+| Start a run | `/resume-init [run-id] [--reviewed-semantic]` | Once per run, before discovery | Defaults to metadata-only; authorization can only narrow to recorded slices |
+| Map a source | `/resume-discover SOURCE_ROOT` | After initialization | Sends a path to the bundled Skill; deterministic discovery returns metadata, not source bodies |
+| Analyze a role and evidence | `/resume-analyze [run-id]` | After discovery and whenever analysis must be rebuilt | Starts independent built-in task reviews; never approves claims |
+| Compose outputs | `/resume-generate [run-id]` | Only after evidence, approval, and user-confirmation gates are ready | Warns if no lock exists; the deterministic lock and validators still gate composition |
+| Inspect generated variants | `/resume-audit RESUME_VARIANTS_JSON` | After generation, or after a rerender | Reads the authoritative manifest and inspects all listed PDFs; no subset can be silently skipped |
+| See run state | `/resume-status [run-id\|RESUME_VARIANTS_JSON]` | At any point without exposing source text | Reports metadata, receipts, privacy state, and manifest summary only |
+
+### Command reference
+
+All seven commands accept `-h`, `--help`, or `help` as a local deterministic help request. For example, `/resume-init --help`, `/resume-discover help`, and `/resume-status -h` show usage without invoking the model. These help forms must not be used to smuggle source text into an argument. Paths are bounded path arguments; pass a path, not a pasted Markdown body.
+Per-command summary: `/resume-help` takes an optional topic; `/resume-init` takes an optional run ID and `--reviewed-semantic`; `/resume-discover` takes one `SOURCE_ROOT`; `/resume-analyze` and `/resume-generate` take an optional run ID; `/resume-audit` takes one `RESUME_VARIANTS_JSON` path; and `/resume-status` takes an optional run ID or manifest path. There are no other workflow flags.
+
+#### `/resume-help [topic]`
+
+- **Arguments:** optional topic. Without one, use `overview`.
+- **Topics:** `overview`, `init`, `discover`, `analyze`, `generate`, `audit`, `status`, `workflow`, `privacy`, `tools`, and `troubleshooting`.
+- **Effect:** displays the selected local help topic through `ctx.ui.notify`; it does not initialize a run, call a model, invoke a deterministic tool, or read source content.
+- **Example:**
+
+  ```text
+  /resume-help workflow
+  ```
+
+- **Safe failure:** an unknown topic is reported locally with the available topic list. If a client cannot display notifications, use an interactive OMP client; do not infer that help ran from an empty headless response.
+
+#### `/resume-init [run-id] [--reviewed-semantic]`
+
+- **Arguments:** an optional bounded run ID and the optional `--reviewed-semantic` flag. Without the flag, initialization is metadata-only.
+- **Effect:** creates or activates a run state. The flag starts an interactive authorization proposal; it does not automatically disclose a source slice.
+- **Example:**
+
+  ```text
+  /resume-init demo-metadata
+  ```
+
+- **Safe failure:** invalid run IDs, non-interactive UI, missing provider or model identity, a missing OMP session JSONL, or weak ownership/permissions leave the run metadata-only and notify the user. A declined authorization also leaves it metadata-only.
+
+#### `/resume-discover SOURCE_ROOT`
+
+- **Arguments:** exactly one read-only source-root path. Do not pass source text, a JD body, credentials, or a JSON payload in this argument.
+- **Effect:** seeds the bundled Skill with a discovery prompt. The Skill calls `resume_discover_structure` to build a fence-aware map of paths, hashes, headings, spans, ancestry, block kinds, and policy metadata.
+- **Example:**
+
+  ```text
+  /resume-discover /tmp/synthetic-career-db
+  ```
+
+- **Safe failure:** an empty, oversized, newline-containing, or otherwise invalid path is rejected locally. A missing/unreadable source or source/output boundary violation fails closed; no source body is sent as a fallback.
+
+#### `/resume-analyze [run-id]`
+
+- **Arguments:** optional run ID; otherwise the active run is used.
+- **Effect:** seeds the bundled Skill to run role, requirement, evidence, contribution, and privacy analysis with OMP's built-in `task` fan-out, then asks deterministic IR validators to check the results. It does not approve a claim or create a claim lock.
+- **Example:**
+
+  ```text
+  /resume-analyze demo-metadata
+  ```
+
+- **Safe failure:** an invalid or uninitialized run ID is reported locally. Missing discovery, stale receipts, ambiguous targets, reviewer disagreement, or deterministic validation errors stop the workflow; analysis prose cannot waive them.
+
+#### `/resume-generate [run-id]`
+
+- **Arguments:** optional run ID; otherwise the active run is used.
+- **Effect:** seeds the bundled Skill to resolve confirmations, use the exact deterministic approval lock, compose every requested variant, and render artifacts. The default is `resume-recruiter-1p` plus `resume-technical-2p`; an extended `technical-profile-3p` is opt-in only when requested.
+- **Example:**
+
+  ```text
+  /resume-generate demo-metadata
+  ```
+
+- **Safe failure:** if no same-run evidence receipt and approval/claim-lock receipt exist, the command warns and the deterministic workflow remains blocked. It never turns a warning into approval, invents evidence, or pads an underfilled variant.
+
+#### `/resume-audit RESUME_VARIANTS_JSON`
+
+- **Arguments:** exactly one path to the private `resume-variants.json` manifest.
+- **Effect:** reads and records the manifest summary, audits retained reviewed-semantic session data when applicable, then seeds the Skill to call `resume_inspect_variants` for every manifest-listed PDF.
+- **Example:**
+
+  ```text
+  /resume-audit /tmp/private-resume-output/<run-directory>/resume-variants.json
+  ```
+
+- **Safe failure:** a missing, malformed, traversal-unsafe, or incomplete manifest fails closed. The command cannot be pointed at one hand-picked PDF to hide another manifest-listed variant.
+
+#### `/resume-status [run-id|RESUME_VARIANTS_JSON]`
+
+- **Arguments:** optional run ID or a `resume-variants.json` path. A `.json` argument is treated as a manifest path; otherwise it is a run ID.
+- **Effect:** displays local JSON status for privacy mode, authorization and retention metadata, completed deterministic tools, source/evidence/approval receipts, confirmation count, and manifest summary. It never includes source bodies.
+- **Example:**
+
+  ```text
+  /resume-status demo-metadata
+  /resume-status /tmp/private-resume-output/<run-directory>/resume-variants.json
+  ```
+
+- **Safe failure:** invalid IDs or unreadable manifests are reported locally without switching runs or exposing a source body. A status notification is not a success claim.
+
+### Metadata-only example (the default)
+
+Use this mode when structural metadata, hashes, spans, policy values, and deterministic summaries are sufficient. The following is a copyable sequence; replace only the synthetic paths with your own read-only source, JD, and private output paths:
+
+```text
+/resume-init demo-metadata
+/resume-discover /tmp/synthetic-career-db
+
+Use the bundled Skill. Analyze the exact "Platform Engineer" role at
+"Example Company" from /tmp/synthetic-jd.md against /tmp/synthetic-career-db.
+Use targeted_application, zh-CN, ats-simple, output root
+/tmp/private-resume-output, and generate only the default recruiter one-page
+and technical two-page variants.
+
+/resume-analyze demo-metadata
+/resume-generate demo-metadata
+/resume-status demo-metadata
+```
+
+In metadata-only mode, the model and built-in tasks receive IDs, hashes, spans, headings, policy metadata, and deterministic summaries, not source bodies. If a material semantic question cannot be resolved from that information, the Skill must ask a focused question or omit the claim; it must not silently read more.
+
+### Reviewed-semantic initialization (explicit, bounded, and retained)
+
+Use reviewed-semantic mode only when metadata cannot resolve a material decision. Start it interactively:
+
+```text
+/resume-init demo-reviewed --reviewed-semantic
+```
+
+When prompted, record exact synthetic identities (not credentials), locality, categories, and the smallest useful slices. For example:
+
+```text
+Main provider: example-provider
+Main model: example-main-model
+Main locality: local
+Built-in task provider: example-task-provider
+Built-in task model: example-task-model
+Built-in task locality: local
+Authorized disclosure categories: jd,evidence
+Exact minimum slices:
+[
+  {
+    "path": "/tmp/synthetic-career-db/roles/example-platform.md",
+    "startLine": 8,
+    "endLine": 16,
+    "category": "jd",
+    "consumers": ["main", "role-analyst", "requirement-reviewer"],
+    "purpose": "classify the synthetic Platform Engineer requirements"
+  },
+  {
+    "path": "/tmp/synthetic-career-db/projects/example-platform.md",
+    "startLine": 42,
+    "endLine": 49,
+    "category": "evidence",
+    "consumers": ["evidence-reviewer", "contribution-reviewer", "privacy-reviewer"],
+    "purpose": "verify one synthetic delivery claim and its contribution boundary"
+  }
+]
+```
+
+The authorization disclosure must show the exact main provider/model/locality **and** built-in task provider/model/locality, every category, every slice's path/line bounds/category/consumers/purpose, the observed OMP session JSONL location and permissions, and the retention/cleanup limits. The main session JSONL must be a current-user-owned private regular file with no group/other permissions (normally `0600`); its parent session directory must be a current-user-owned private directory with `0700` and no group/other permissions. The entire OMP task/advisor session tree is audited for ownership, permissions, malformed lines, receipt proof, out-of-scope slices, and forbidden sentinels.
+
+Authorization is per run, provider/model, consumer, category, purpose, and exact span. OMP-owned task and advisor JSONL is retained private data; the Extension has no verified selective-deletion guarantee, so the disclosure must say that plainly. Contacts, credentials, secrets, whole repositories, and F6/P3 content remain forbidden even after authorization. If any interactive or permission gate fails, the run remains metadata-only.
+
+`resume_read_source_slice` is the only bounded body-read path. It rechecks the source-map policy, authorization ID, consumer, provider/model/locality, exact line range, byte limit, and prefilter before returning one slice. Never put a private body in a slash-command argument or claim that a declined/denied read occurred.
+
+### Exact receipt-driven workflow
+
+The Plugin commands seed this state machine; they do not replace it:
+
+```text
+init
+  → discover
+  → source-map receipt
+  → analyze/reviews
+  → evidence receipt
+  → approval receipt
+  → compose
+  → manifest render
+  → inspect/audit
+```
+
+Follow the receipts, not filenames or model prose:
+
+1. `/resume-init` establishes metadata-only state, or records the reviewed-semantic authorization.
+2. `/resume-discover` leads to `resume_discover_structure`. Run the independent source-mapper and role-analyst tasks through OMP's built-in `task` tool.
+3. Call `resume_validate_source_map` and retain its same-run `source_map_receipt.digest`. This validator reopens the source and checks identity, hashes, spans, quotes, and policy.
+4. Validate role IR with `resume_validate_role_ir`. Run the independent requirement, evidence, contribution, and privacy reviews. A disagreement is a hard gate, not a vote to ignore.
+5. Call `resume_validate_evidence_ir` with the exact `sourceMapDigest` from step 3 and accepted selector IDs or explicitly authorized canonical evidence. Retain its `evidence_receipt.digest`; do not resend a caller-supplied source map.
+6. Resolve confirmations and hard gates, then call `resume_lock_approved_claims` with the same-run evidence receipt and unchanged reviewer wrappers. It returns the `approval_receipt`/claim-lock digest; this is the only approval boundary.
+7. Call `resume_compose_variants` with the exact evidence and approval receipt digests plus generation-only metadata. It rejects stale, cross-run, output-mode-mismatched, or payload-mismatched receipts.
+8. Read `resume-variants.json`, call `resume_render_variants`, then call `resume_inspect_variants` for exactly every listed variant.
+9. Report each variant's content-audit result, provenance/privacy checks, PDF inspection, actual pages, and any `underfilled` status separately. A successful PDF inspection is never a substitute for `audit_success`.
+
+The bundled Skill and its seven agents use OMP's built-in `task` orchestration for independent analysis and reviews. Slash commands only seed that workflow and show state; they cannot bypass deterministic source-policy, IR, evidence, approval, composition, rendering, or inspection tools.
+
+### Nine deterministic tools by user-facing stage
+
+| Stage | Tool | What it does and what it refuses |
+| --- | --- | --- |
+| Discover | `resume_discover_structure` | Builds the metadata-only source map (paths, hashes, spans, headings, ancestry, blocks, policy); never exposes bodies or orchestrates agents |
+| Bounded exposure | `resume_read_source_slice` | Reads one exact authorized, prefiltered line slice only in reviewed-semantic mode; metadata-only runs and unapproved, unrelated, forbidden, oversized, or mismatched slices fail closed |
+| Source-map validation | `resume_validate_source_map` | Reopens source and verifies identity, hashes, spans, quotes, and policy; agent output cannot override it and it records the source-policy receipt |
+| Role validation | `resume_validate_role_ir` | Checks normalized role IR, requirement quotes/spans, freshness, and company/role/roadmap separation |
+| Evidence validation | `resume_validate_evidence_ir` | Materializes only approved extractive IDs in metadata-only mode or validates an authorized canonical evidence IR; returns an evidence receipt and rejects caller-supplied source maps |
+| Approval | `resume_lock_approved_claims` | Applies hard-disagreement rules, verifies reviewer wrappers and revalidated sources, collects required user confirmations, and creates the claim lock; caller booleans/evidence bodies are forbidden |
+| Compose | `resume_compose_variants` | Verifies same-run receipts and confirmation state, then invokes private Python composition; it cannot receive caller-supplied evidence/review/approval bodies |
+| Render | `resume_render_variants` | Re-renders every manifest-listed document to its manifest-listed PDF; traversal-unsafe or missing artifacts fail closed |
+| Inspect/audit | `resume_inspect_variants` | Inspects every manifest-listed PDF with its page contract and real extracted-text checks; a subset cannot be supplied |
+
+All tools return a typed success/error envelope and use one configured backend. There is no silent TypeScript/Python fallback. Python-backed tools require the project-local bridge prerequisites.
+
+### Discovering artifacts and the authoritative manifest
+
+Generation always creates `resume-recruiter-1p` and `resume-technical-2p`. Ask for `technical-profile-3p` only when an extended profile is useful; it is not part of the default. The Skill writes a new timestamped run directory under the private output root. `resume-variants.json` is authoritative and lists each variant's target and actual page counts, validation/audit results, artifact paths, and preview paths. Read it first:
+
+```text
+RUN_DIR/resume-variants.json
+```
+
+Then open only paths listed for that variant, such as its `.document.json`, `.provenance.json`, `.validation.json`, `.audit.md`, `.md`, `.txt`, `.html`, `.pdf`, and preview images. The manifest may legitimately mark a sparse variant `underfilled`; do not add unsupported filler merely to reach the page target. Each manifest-listed variant must pass content audit and PDF inspection independently. PDF pass, page count, or file existence alone never means content audit passed.
+
+### Plugin prerequisites and privacy gates at a glance
+
+- OMP `17.3.7+`, Bun `1.3.0+`, `uv`, and Python `3.14+` are required for the complete Plugin workflow.
+- The bundled bridge uses `uv run --project PLUGIN_ROOT --offline --frozen`; install the locked dependencies before invoking Python-backed tools.
+- Playwright Chromium and Noto Sans CJK SC or Source Han Sans SC under `/usr/share/fonts` are required for rendering; Plugin installation does not install either.
+- Keep the source read-only and keep the output root outside it. Runtime directories/files are private (`0700`/`0600`).
+- Metadata-only is the default. Reviewed-semantic mode additionally requires an interactive UI, explicit per-run authorization, and a strong private OMP session tree.
+- Do not disclose contacts, credentials, secrets, or F6/P3 material. Do not infer permission from an earlier run or from CLI access.
+
+### Plugin troubleshooting
+
+#### “No deterministic claim-lock result is recorded”
+
+`/resume-generate` may warn about this state, but it cannot approve claims. Return to `/resume-analyze`, ensure the same run has a successful source-map and evidence receipt, resolve independent reviewer disagreements and required confirmations, and let the Skill call `resume_lock_approved_claims`. Do not paste evidence or approval JSON into `/resume-generate`, and do not treat the warning as success.
+
+#### `SOURCE_POLICY_REQUIRED` or an unrelated slice
+
+The evidence tool or slice reader is missing the same-run validated source-policy receipt, or the requested path/span is not in the authorized policy map/minimum-slice list. Re-run discovery and `resume_validate_source_map`, use its returned digest, and request only the exact authorized span with its recorded consumer/category/purpose. Never widen a slice, substitute a different file, or paste the source body into a command argument.
+
+#### Weak OMP session tree
+
+Reviewed-semantic authorization stays disabled when the JSONL file or any audited task/advisor directory/file is not current-user-owned, private, regular, or receipt-proven. Fix the OMP session directory/file permissions and ownership, start a fresh private interactive session if needed, and initialize a new run. A weak tree, `outOfScopeSliceCount`, `forbiddenSentinelCount`, malformed lines, or retained-artifact audit failure must be reported; never claim cleanup or deletion that was not demonstrated.
+
+#### Missing Python bridge dependencies
+
+Plugin installation does not run dependency setup. From the checkout, provision the locked environment and rendering prerequisites before using Python-backed tools:
+
+```bash
+cd /path/to/china-targeted-resume-plugin
+uv sync
+uv run playwright install chromium
+```
+
+Install Noto Sans CJK SC or Source Han Sans SC under `/usr/share/fonts` as described in the prerequisites. The bridge intentionally runs offline/frozen from the bundled project; a missing package, browser, or font is an explicit backend failure, not a reason to bypass the deterministic tool.
+
+#### `audit_success` is false or a variant is `underfilled`
+
+Read `resume-variants.json`, then the affected variant's `.validation.json` and `.audit.md`. Fix the source-backed claim, policy, privacy, layout, or rendering issue and rerun the affected deterministic stages. `underfilled` can be a valid sparse-evidence result with fewer actual pages; do not pad it or silently add the optional extended profile. A PDF that passes page/text inspection can still have `audit_success: false`, and `audit_success: true` does not remove the need to inspect the real PDF.
+
 ### Standalone Python CLI
 
 The CLI does not require OMP or the Plugin. It requires:

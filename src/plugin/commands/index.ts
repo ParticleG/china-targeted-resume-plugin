@@ -19,12 +19,21 @@ import type {
   SessionAuditReport,
   SourceSliceDescriptor,
 } from "../privacy/index.ts";
+import {
+  isResumeHelpRequest,
+  resolveResumeHelpTopic,
+  resumeHelpCompletions,
+  resumeHelpError,
+  resumeHelpText,
+  type ResumeHelpTopic,
+} from "./help.ts";
 
 export const BUNDLED_RESUME_SKILL_PATH = fileURLToPath(
   new URL("../../../skills/china-targeted-resume/SKILL.md", import.meta.url),
 );
 
 export const RESUME_COMMAND_NAMES = [
+  "resume-help",
   "resume-init",
   "resume-discover",
   "resume-analyze",
@@ -349,7 +358,14 @@ async function configureReviewedSemantic(
   return true;
 }
 
-function workflowPrompt(stage: Exclude<ResumeCommandName, "resume-init" | "resume-status">, runId: string, argument?: string): string {
+function workflowPrompt(
+  stage: Exclude<
+    ResumeCommandName,
+    "resume-help" | "resume-init" | "resume-status"
+  >,
+  runId: string,
+  argument?: string,
+): string {
   const context = argument === undefined ? "" : `\nAuthorized metadata argument: ${JSON.stringify(argument)}`;
   const instructions: Record<typeof stage, string> = {
     "resume-discover": "Use the bundled china-targeted-resume Skill. Discover metadata with resume_discover_structure. Use OMP's built-in task tool for source-mapper work; never imitate task orchestration and never request raw slices in metadata-only mode.",
@@ -448,10 +464,34 @@ function resumeStatusSummary(status: ResumeRunStatus): Readonly<Record<string, u
   });
 }
 
+function showInlineHelp(
+  rawArgs: string,
+  topic: ResumeHelpTopic,
+  ctx: ExtensionCommandContext,
+): boolean {
+  if (!isResumeHelpRequest(rawArgs)) return false;
+  ctx.ui.notify(resumeHelpText(topic), "info");
+  return true;
+}
+
 export function registerResumeCommands(pi: ExtensionAPI, runtime: ResumePluginRuntime): void {
-  pi.registerCommand("resume-init", {
-    description: "Initialize a metadata-only resume run or explicitly authorize bounded reviewed-semantic slices",
+  pi.registerCommand("resume-help", {
+    description: "Show deterministic Plugin usage; /resume-help [topic]",
+    getArgumentCompletions: resumeHelpCompletions,
     handler: async (rawArgs, ctx) => {
+      const topic = resolveResumeHelpTopic(rawArgs);
+      if (topic === undefined) {
+        ctx.ui.notify(resumeHelpError(rawArgs), "error");
+        return;
+      }
+      ctx.ui.notify(resumeHelpText(topic), "info");
+    },
+  });
+
+  pi.registerCommand("resume-init", {
+    description: "Initialize a private run; use /resume-help init",
+    handler: async (rawArgs, ctx) => {
+      if (showInlineHelp(rawArgs, "init", ctx)) return;
       const tokens = rawArgs.trim() ? rawArgs.trim().split(/\s+/) : [];
       const reviewedSemantic = tokens.includes("--reviewed-semantic");
       const positional = tokens.filter((token) => token !== "--reviewed-semantic");
@@ -478,8 +518,9 @@ export function registerResumeCommands(pi: ExtensionAPI, runtime: ResumePluginRu
   });
 
   pi.registerCommand("resume-discover", {
-    description: "Start metadata-only source discovery through the bundled Skill",
+    description: "Discover source metadata; use /resume-help discover",
     handler: async (rawArgs, ctx) => {
+      if (showInlineHelp(rawArgs, "discover", ctx)) return;
       try {
         const sourceRoot = safePathArgument(rawArgs, "Source root");
         pi.sendUserMessage(workflowPrompt("resume-discover", runtime.activeRunId, sourceRoot));
@@ -490,8 +531,9 @@ export function registerResumeCommands(pi: ExtensionAPI, runtime: ResumePluginRu
   });
 
   pi.registerCommand("resume-analyze", {
-    description: "Start independent role/evidence/privacy analysis without approving claims",
+    description: "Start independent analysis; use /resume-help analyze",
     handler: async (rawArgs, ctx) => {
+      if (showInlineHelp(rawArgs, "analyze", ctx)) return;
       try {
         if (rawArgs.trim()) runtime.activate(validateRunId(rawArgs));
         pi.sendUserMessage(workflowPrompt("resume-analyze", runtime.activeRunId));
@@ -502,8 +544,9 @@ export function registerResumeCommands(pi: ExtensionAPI, runtime: ResumePluginRu
   });
 
   pi.registerCommand("resume-generate", {
-    description: "Compose locked claims into variants; this command never approves semantic claims",
+    description: "Generate from locked claims; use /resume-help generate",
     handler: async (rawArgs, ctx) => {
+      if (showInlineHelp(rawArgs, "generate", ctx)) return;
       try {
         if (rawArgs.trim()) runtime.activate(validateRunId(rawArgs));
         const status = runtime.status();
@@ -518,8 +561,9 @@ export function registerResumeCommands(pi: ExtensionAPI, runtime: ResumePluginRu
   });
 
   pi.registerCommand("resume-audit", {
-    description: "Summarize and inspect every PDF listed by resume-variants.json",
+    description: "Audit a variant manifest; use /resume-help audit",
     handler: async (rawArgs, ctx) => {
+      if (showInlineHelp(rawArgs, "audit", ctx)) return;
       try {
         const manifestPath = safePathArgument(rawArgs, "resume-variants.json path");
         const manifest = await readVariantManifest(manifestPath);
@@ -542,8 +586,9 @@ export function registerResumeCommands(pi: ExtensionAPI, runtime: ResumePluginRu
   });
 
   pi.registerCommand("resume-status", {
-    description: "Show privacy, validation-stage, and variant-manifest status without source bodies",
+    description: "Show path-free run status; use /resume-help status",
     handler: async (rawArgs, ctx) => {
+      if (showInlineHelp(rawArgs, "status", ctx)) return;
       try {
         const argument = rawArgs.trim();
         if (argument) {

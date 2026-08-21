@@ -84,7 +84,7 @@
 
 **Decision:** Advance to Phase 3 for local contract migration. The Plugin uses OMP's built-in `task` orchestration through the canonical Skill; the Extension owns only typed commands/tools, privacy state, and the deterministic Python bridge.
 
-**Evidence:** OMP 17.3.7 loaded the linked Plugin from `/tmp`, consumed `/resume-status`, and discovered the installed extension package with colocated Skill and seven agent definitions. The package registers exactly six commands and nine tools. Metadata-only is default; raw slices require recorded reviewed-semantic authorization and deterministic prefiltering. OMP session JSONL retention is disclosed and audited rather than hidden.
+**Evidence:** OMP 17.3.7 loaded the linked Plugin from `/tmp`, consumed `/resume-status`, and discovered the installed extension package with colocated Skill and seven agent definitions. At this phase gate the package registered six workflow commands and nine tools; the later `/resume-help` command is a deterministic UX addition and does not change the kernel boundary. Metadata-only is default; raw slices require recorded reviewed-semantic authorization and deterministic prefiltering. OMP session persistence is disclosed and audited rather than hidden.
 
 **Alternatives rejected:** Reimplementing OMP task lifecycle; raw payloads in argv; Plugin-owned source-body state; silent claim approval; claiming Plugin install also installs the standalone CLI.
 
@@ -139,3 +139,11 @@ The run used OMP's built-in `task` runtime for metadata mapping and independent 
 **Verification:** Remote URL: `https://github.com/ParticleG/china-targeted-resume-plugin`. The Plugin package exposes the Extension, canonical Skill, seven agents, Python project, schemas, and deterministic kernels without recursive Skill links. Plugin installation remains distinct from global Python CLI installation.
 
 **Follow-up:** Re-run the GitHub install with `--force` after future published commits; marketplace-only `omp plugin upgrade` is not the update path for this direct Git source.
+
+## 2026-08-22 — Plugin help and operator guide
+
+**Decision:** Add `/resume-help [topic]` as a seventh, deterministic Extension command and support `help`, `-h`, and `--help` before every existing command's domain argument parser.
+
+**Evidence:** OMP `17.3.7` does not generate per-command usage from Extension command descriptions. The new help contract uses a closed topic allowlist, prefix completions, and `ctx.ui.notify`; it never sends a model message, reads source data, mutates run state, or interprets help flags as paths/run IDs. Detailed, mirrored Plugin quickstarts, command examples, receipt flow, privacy authorization, tool inventory, artifact handling, and troubleshooting are documented in both READMEs.
+
+**Compatibility:** Multiline help is an interactive TUI feature. OMP print mode uses a no-op Extension UI and ACP/RPC visibility depends on the client, so documentation remains the authoritative headless reference.

@@ -49,8 +49,9 @@ OMP `17.3.7` is the compatibility floor and the source-checked/local-smoke basel
 | `resume_render_variants` | Python behind a TypeScript manifest/path guard | Python/Jinja composition output and Playwright Chromium produce HTML, PDFs, and previews for every manifest-listed variant. Missing renderer prerequisites stop the tool. |
 | `resume_inspect_variants` | Python/PyMuPDF behind a TypeScript manifest/path guard | Inspects every manifest-listed PDF; a subset cannot be silently accepted. Missing PyMuPDF or a failed check stops acceptance. |
 
-The six slash commands remain TypeScript OMP orchestration entry points:
+The seven slash commands remain TypeScript OMP entry points:
 
+- `/resume-help` renders deterministic, model-free command/topic help and bounded argument completions;
 - `/resume-init` and `/resume-status` manage/report Plugin run metadata and privacy state;
 - `/resume-discover`, `/resume-analyze`, `/resume-generate`, and `/resume-audit` seed the canonical Skill workflow, which uses OMP's built-in `task` runtime and the typed tools above.
 

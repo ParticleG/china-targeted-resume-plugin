@@ -25,6 +25,13 @@ interface FakeSchema {
 
 interface CapturedCommand {
   readonly description?: string;
+  readonly getArgumentCompletions?: (
+    argumentPrefix: string,
+  ) => Array<{
+    readonly value: string;
+    readonly label: string;
+    readonly description?: string;
+  }> | null;
   readonly handler: (args: string, context: ExtensionCommandContext) => Promise<void>;
 }
 
@@ -101,14 +108,14 @@ function commandContext(notifications: string[]): ExtensionCommandContext {
 }
 
 describe("OMP Extension registration", () => {
-  test("default import registers exactly six commands and nine tools without launching OMP", () => {
+  test("default import registers seven commands and nine tools without launching OMP", () => {
     const captured = capturePi();
     extension(captured.api);
 
     expect([...captured.commands.keys()]).toEqual([...RESUME_COMMAND_NAMES]);
     expect(captured.tools.map((tool) => tool.name)).toEqual([...RESUME_TOOL_NAMES]);
     expect(captured.tools).toHaveLength(9);
-    expect(captured.commands.size).toBe(6);
+    expect(captured.commands.size).toBe(7);
     expect(captured.prompts).toEqual([]);
     expect(captured.tools.every((tool) => tool.execute.length === 5)).toBe(true);
   });
@@ -251,6 +258,94 @@ describe("OMP Extension registration", () => {
     expect(JSON.parse(result.content[0].text)).toMatchObject({
       error: { code: "CALLER_CONFIRMATION_FORBIDDEN" },
     });
+  });
+});
+
+describe("deterministic Plugin help", () => {
+  test("resume-help renders overview and topics without invoking the model", async () => {
+    const captured = capturePi();
+    registerChinaTargetedResumeExtension(captured.api);
+    const notifications: string[] = [];
+    const help = captured.commands.get("resume-help")!;
+
+    await help.handler("", commandContext(notifications));
+    await help.handler("privacy", commandContext(notifications));
+
+    expect(notifications[0]).toContain("China Targeted Resume Plugin");
+    expect(notifications[0]).toContain("/resume-help [topic]");
+    expect(notifications[0]).toContain("/resume-discover");
+    expect(notifications[1]).toContain("metadata-only");
+    expect(notifications[1]).toContain("reviewed-semantic");
+    expect(captured.prompts).toEqual([]);
+  });
+
+  test("resume-help rejects unknown and multi-token topics", async () => {
+    const captured = capturePi();
+    registerChinaTargetedResumeExtension(captured.api);
+    const notifications: string[] = [];
+    const help = captured.commands.get("resume-help")!;
+
+    await help.handler("unknown", commandContext(notifications));
+    await help.handler("privacy extra", commandContext(notifications));
+
+    expect(notifications).toHaveLength(2);
+    expect(notifications.every((message) => message.includes("Unknown help topic"))).toBe(true);
+    expect(notifications[0]).toContain("troubleshooting");
+    expect(captured.prompts).toEqual([]);
+  });
+
+  test("resume-help offers bounded topic completions", () => {
+    const captured = capturePi();
+    registerChinaTargetedResumeExtension(captured.api);
+    const complete = captured.commands.get("resume-help")!.getArgumentCompletions!;
+
+    const allTopics = complete("");
+    if (allTopics === null) throw new Error("resume-help topics are missing");
+    expect(allTopics.map((item) => item.value)).toEqual([
+      "init",
+      "discover",
+      "analyze",
+      "generate",
+      "audit",
+      "status",
+      "workflow",
+      "privacy",
+      "tools",
+      "troubleshooting",
+    ]);
+    expect(complete("pr")).toEqual([
+      {
+        value: "privacy",
+        label: "privacy",
+        description: "Metadata-only and reviewed-semantic modes",
+      },
+    ]);
+    expect(complete("privacy extra")).toBeNull();
+  });
+
+  test("every workflow command handles local help flags before domain parsing", async () => {
+    const captured = capturePi();
+    registerChinaTargetedResumeExtension(captured.api);
+    const expectedByCommand: Readonly<Record<string, string>> = {
+      "resume-init": "reviewed-semantic",
+      "resume-discover": "SOURCE_ROOT",
+      "resume-analyze": "independent",
+      "resume-generate": "approval receipt",
+      "resume-audit": "RESUME_VARIANTS_JSON",
+      "resume-status": "run-id",
+    };
+
+    for (const [commandName, expected] of Object.entries(expectedByCommand)) {
+      for (const flag of ["help", "-h", "--help"]) {
+        const notifications: string[] = [];
+        await captured.commands.get(commandName)!.handler(
+          flag,
+          commandContext(notifications),
+        );
+        expect(notifications.join("\n")).toContain(expected);
+      }
+    }
+    expect(captured.prompts).toEqual([]);
   });
 });
 
