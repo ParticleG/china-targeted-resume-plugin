@@ -2,10 +2,12 @@
 
 `china-targeted-resume` 可将只读的 Markdown 职业知识库转换为面向目标公司和岗位、以证据为依据的简历。它会分析岗位要求、映射有来源支持的个人证据、记录差距与约束、审计简历中可见的陈述，并在本地渲染适合 ATS（Applicant Tracking System，申请人跟踪系统）的 PDF。
 
-本仓库同时是：
+本仓库提供两个需要分别安装、均受支持的使用界面：
 
-- 一个 Python 3.14 命令行应用；以及
-- 一个可安装的 OMP Skill，其编排说明位于 [`SKILL.md`](SKILL.md)。
+- 一个独立的 Python 3.14 命令行应用；以及
+- 一个 OMP Plugin，其中包含 Extension、命令、类型化工具、Agent，以及位于 [`skills/china-targeted-resume/SKILL.md`](skills/china-targeted-resume/SKILL.md) 的唯一规范 Skill。
+
+最终运行时决策是 **Option A: Plugin-first hybrid**。TypeScript 负责 OMP 集成以及纳入跨语言约定的确定性边界；Python 保留为独立 CLI，以及显式的结构解析、编排/审计、Chromium 渲染与 PyMuPDF 检查后端。安装 Plugin 不会在全局安装 Python CLI；安装 Python 软件包也不会向 OMP 注册 Plugin。详见[最终产品边界](docs/final-product-boundary.md)和[第三阶段一致性矩阵](docs/parity-matrix.md)。
 
 ## 生成内容
 
@@ -61,13 +63,38 @@ OUTPUT_ROOT/
 - 未验证、有冲突、私密、过时或缺乏支持的陈述会被省略，或转换为待确认问题。
 - 生成的 PDF 只有在确定性的内容检查与 PDF 检查全部通过后才会被接受。
 
-## 环境要求
+## 安装与环境要求
 
-- Linux
-- Python 3.14 或更高版本
-- [`uv`](https://docs.astral.sh/uv/)
-- Playwright Chromium
-- 安装在 `/usr/share/fonts` 下的 Noto Sans CJK SC 或 Source Han Sans SC
+### OMP Plugin
+
+Plugin 的 OMP 兼容性下限是 `17.3.7`；此外还需要 Bun `1.3.0` 或更高版本。完整生成流程还需要 [`uv`](https://docs.astral.sh/uv/) 和 Python `3.14` 或更高版本，因为基于解析器的验证、编排/审计、Chromium 渲染和 PyMuPDF 检查仍是显式 Python 后端。
+
+本地开发或仓库尚未发布时，请链接项目的绝对路径：
+
+```bash
+omp plugin link /absolute/path/to/china-targeted-resume-plugin --force
+```
+
+获得授权并发布 GitHub 仓库后，使用同一远程源安装和更新：
+
+```bash
+omp plugin install github:OWNER/REPOSITORY
+omp plugin install github:OWNER/REPOSITORY --force
+```
+
+当前本地仓库尚未通过远程 GitHub 安装、记录源更新和全新项目外会话发现；这些仍属于发布后的外部门禁。本地链接结果不能替代该门禁。
+
+Python 后端 Plugin 工具会通过 `uv run --project PLUGIN_ROOT --offline --frozen china-targeted-resume …` 运行随包检出的源码。请提前准备好锁定的 Python 依赖，并在渲染前安装 Playwright Chromium 与受支持的 CJK 字体。Plugin 安装只负责注册 OMP 组件；它**不会**把 `china-targeted-resume` 加入全局 `PATH`，不会运行 `uv sync`，也不会安装浏览器或字体。只要项目本地桥接命令可用，就不需要全局安装 CLI。
+
+### 独立 Python CLI
+
+CLI 不依赖 OMP 或 Plugin，但需要：
+
+- Linux；
+- Python 3.14 或更高版本；
+- [`uv`](https://docs.astral.sh/uv/)；
+- Playwright Chromium；以及
+- 安装在 `/usr/share/fonts` 下的 Noto Sans CJK SC 或 Source Han Sans SC。
 
 在 Arch Linux 上，可通过以下命令安装字体依赖：
 
@@ -78,18 +105,18 @@ sudo pacman -S --needed noto-fonts-cjk
 安装项目依赖和 Chromium：
 
 ```bash
-cd /path/to/china-targeted-resume
+cd /path/to/china-targeted-resume-plugin
 uv sync
 uv run playwright install chromium
 ```
 
-确认 CLI 可用：
+确认项目本地 CLI 可用：
 
 ```bash
 uv run china-targeted-resume --help
 ```
 
-下文所有示例均使用 `uv run china-targeted-resume`。如果已全局安装该软件包，可省略 `uv run`。
+下文所有 CLI 示例均使用 `uv run china-targeted-resume`。只有在另行将 Python 软件包安装为全局命令后，才可省略 `uv run`。
 
 ## 教程：准备源路径和输出路径
 
@@ -340,9 +367,15 @@ uv run china-targeted-resume export-roadmap-handoff \
 - `ats-simple`：保守的单栏 ATS 布局。
 - `human-readable`：保持相同的语义阅读顺序，但采用更面向人工阅读的视觉呈现。
 
-## 使用 OMP Skill
+## 使用 OMP Plugin 与 Skill
 
-安装后的 Skill 可让 OMP 会话理解自然语言请求，并编排确定性的 CLI。Skill 仍要求明确指定源边界和输出边界。
+安装后的 Plugin 通过 **Plugin-first hybrid** 后端让 OMP 会话理解自然语言请求。先使用 `/resume-init`，再按需使用 `/resume-discover`、`/resume-analyze`、`/resume-generate`、`/resume-audit` 和 `/resume-status`。这些命令是编排入口，不会取代策略验证。
+
+每个 Plugin 工具只有一个配置好的后端；后端不可用时会显式失败，不会在 Python 与 TypeScript 之间静默回退。TypeScript 负责授权源片段读取器和已批准陈述锁定；基于 `markdown-it-py` 的 source-map/role/evidence 验证、编排与审计、Playwright Chromium 渲染和 PyMuPDF 检查仍使用显式 Python 后端。完整逐工具矩阵见 [`docs/final-product-boundary.md`](docs/final-product-boundary.md)。
+
+每次运行均默认采用 metadata-only 模式：模型只接收结构元数据、ID、哈希、区间、策略值和确定性摘要，不接收源正文。只有当重要语义判断确实需要某个私密原文片段时，Plugin 才可先披露所选模型提供方及其本地/远程属性、披露类别与最小片段、私密 OMP JSONL 的位置和实际权限，以及保留/清理限制。reviewed-semantic 访问必须获得针对本次运行的明确授权；联系方式、凭据和 F6/P3 内容始终禁止披露。
+
+Skill 要求主模型通过 OMP 内置 `task` 工具扇出七个随包 Agent。要求、证据、贡献和隐私审查中的独立分歧构成硬门禁；resume advisor 只监视工作流，不能批准陈述。必须先执行基于解析器的验证，再由 TypeScript 锁定已批准陈述；只有文本完全一致的锁定陈述才能用于编排、渲染和检查。
 
 示例提示词：
 
@@ -353,14 +386,26 @@ uv run china-targeted-resume export-roadmap-handoff \
 /path/to/private-output，并报告每个版本的内容审计和 PDF 检查结果。
 ```
 
-Skill 应解析目标层级、运行 CLI、仅提出会对结果产生实质影响的确认问题，并报告带时间戳的运行目录。它不得将生成的简历文本写回 `personal-data/`。
+Skill 会解析目标层级，仅提出会对结果产生实质影响的确认问题，并报告带时间戳的运行目录。它绝不会将生成的简历文本写回 `personal-data/`。仅安装 Plugin 或 `.skill` 并不会安装 Python CLI；上述项目本地内核桥接前置条件必须事先可用。
 
 ## 测试
 
-运行完整的确定性测试套件：
+运行独立 Python 与真实产物测试套件：
 
 ```bash
 uv run pytest -q
+```
+
+运行 Plugin 类型检查和完整 Bun 约定套件：
+
+```bash
+bun run check
+```
+
+如只需执行第三阶段的 schema、安全 I/O 与源身份门禁：
+
+```bash
+bun run test:kernel
 ```
 
 ## 构建和打包
@@ -377,10 +422,12 @@ uv run python scripts/package_skill.py
 ```text
 dist/china_targeted_resume-0.1.0.tar.gz
 dist/china_targeted_resume-0.1.0-py3-none-any.whl
-dist/china-targeted-resume.skill
+dist/china-targeted-resume-plugin.skill
 ```
 
-经过筛选的 `.skill` 归档包含运行时代码、schema、参考文档、模板、脚本、`SKILL.md` 和英文 README。它不包含测试、评估工作区、缓存、真实源数据或生成的简历输出。
+Git/源码形式的 OMP Plugin 软件包遵循 `package.json#files`：其中包含 Extension、确定性 TypeScript 内核、Agent、规范 Skill、schema、资源、Python 专用后端、锁定的 Python 项目元数据，以及最终边界/一致性文档；不包含测试。Python wheel 包含独立运行时、渲染资源以及已安装验证命令所需的五个 IR schema；sdist 包含 Plugin 布局下的规范 Skill 及其参考文档。经过筛选的 `.skill` 归档使用同一份规范源文件，在归档根部暂存唯一的 `SKILL.md` 与 `references/`，并包含 Python 运行时源码、schema、模板、脚本和英文 README，但不创建递归的 `.agents/skills` 或 `.claude/skills` 链接。它不包含测试、评估工作区、缓存、真实源数据或生成的简历输出。
+
+这些是不同的安装产物：安装 OMP Plugin 或解包 `.skill` 都不会执行全局 Python CLI 安装；`.skill` 是编排包，并不是 OMP Extension 软件包。
 
 ## 评估工作区
 
@@ -454,12 +501,15 @@ chmod 700 "$OUTPUT_ROOT"
 
 ## 更多文档
 
-- [`SKILL.md`](SKILL.md)：OMP 编排约定
-- [`references/source-adapter.md`](references/source-adapter.md)：源发现与隔离
-- [`references/role-resolution.md`](references/role-resolution.md)：Tier A-D 解析
-- [`references/evidence-policy.md`](references/evidence-policy.md)：事实与披露门禁
-- [`references/role-dossier-contract.md`](references/role-dossier-contract.md)：七文件岗位档案边界
-- [`references/output-contract.md`](references/output-contract.md)：产物约定
-- [`references/resume-audit.md`](references/resume-audit.md)：内容与 PDF 验收
-- [`references/privacy-policy.md`](references/privacy-policy.md)：隐私与保留规则
-- [`references/roadmap-handoff.md`](references/roadmap-handoff.md)：显式差距导出
+- [`docs/final-product-boundary.md`](docs/final-product-boundary.md)：Option A 运行时决策、受支持环境、安装/更新门禁和逐工具后端归属
+- [`docs/parity-matrix.md`](docs/parity-matrix.md)：第三阶段一致性证据、精确规范化规则和最终验证矩阵
+
+- [`skills/china-targeted-resume/SKILL.md`](skills/china-targeted-resume/SKILL.md)：唯一规范的 OMP 编排约定
+- [`skills/china-targeted-resume/references/source-adapter.md`](skills/china-targeted-resume/references/source-adapter.md)：源发现与隔离
+- [`skills/china-targeted-resume/references/role-resolution.md`](skills/china-targeted-resume/references/role-resolution.md)：Tier A-D 解析
+- [`skills/china-targeted-resume/references/evidence-policy.md`](skills/china-targeted-resume/references/evidence-policy.md)：事实与披露门禁
+- [`skills/china-targeted-resume/references/role-dossier-contract.md`](skills/china-targeted-resume/references/role-dossier-contract.md)：七文件岗位档案边界
+- [`skills/china-targeted-resume/references/output-contract.md`](skills/china-targeted-resume/references/output-contract.md)：产物约定
+- [`skills/china-targeted-resume/references/resume-audit.md`](skills/china-targeted-resume/references/resume-audit.md)：内容与 PDF 验收
+- [`skills/china-targeted-resume/references/privacy-policy.md`](skills/china-targeted-resume/references/privacy-policy.md)：隐私与保留规则
+- [`skills/china-targeted-resume/references/roadmap-handoff.md`](skills/china-targeted-resume/references/roadmap-handoff.md)：显式差距导出

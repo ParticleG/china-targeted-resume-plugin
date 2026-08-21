@@ -13,6 +13,12 @@ from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import unquote, urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
+from china_targeted_resume.markdown_structure import (
+    MarkdownBlock,
+    MarkdownSection,
+    SourceDocument,
+    parse_markdown,
+)
 
 from china_targeted_resume.models import (
     CompanyRef,
@@ -52,7 +58,6 @@ _ROLE_DOSSIER_FILES = (
 )
 _IGNORED_NAMES = {".git", ".hg", ".svn", "__pycache__", "node_modules", "output", "outputs", "dist", "build"}
 _SENSITIVE_PATH_RE = re.compile(r"(?:^|[-_.])(secret|credential|password|private[-_]?key|token|\.env)(?:$|[-_.])", re.I)
-_HEADING_RE = re.compile(r"^(#{1,6})[ \t]+(.+?)[ \t]*#*[ \t]*$")
 _LINK_RE = re.compile(r"!?\[[^\]\n]*\]\(([^)\s]+)(?:\s+[\"'][^\n]*[\"'])?\)|<((?:https?://|mailto:)[^>]+)>", re.I)
 _EMAIL_RE = re.compile(r"(?<![\w.+-])[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}(?![\w.-])")
 _PHONE_RE = re.compile(r"(?<!\d)(?:\+?86[- ]?)?1[3-9]\d{9}(?!\d)")
@@ -76,12 +81,6 @@ class SourceLayoutError(ValueError):
     """Raised when authority or navigation files are missing."""
 
 
-def _sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(128 * 1024), b""):
-            digest.update(chunk)
-    return f"sha256:{digest.hexdigest()}"
 
 
 class _NoRedirect(HTTPRedirectHandler):
@@ -163,6 +162,10 @@ class MarkdownCareerV1Adapter:
         self._root: Path | None = None
         self._manifest: SourceManifest | None = None
         self._sections: dict[tuple[str, str, int, int], SourceSection] = {}
+        self._source_documents: dict[str, SourceDocument] = {}
+        self._structural_sections: dict[
+            tuple[str, str, int, int], MarkdownSection
+        ] = {}
         if root is not None:
             self.discover(root)
 
@@ -232,34 +235,20 @@ class MarkdownCareerV1Adapter:
                     result.append(path)
         return sorted(result, key=lambda path: path.relative_to(self.root).as_posix())
 
-    def _headings(self, lines: list[str]) -> list[tuple[int, int, str, str]]:
-        headings: list[tuple[int, int, str, str]] = []
-        anchor_counts: defaultdict[str, int] = defaultdict(int)
-        fenced = False
-        fence_char = ""
-        for number, line in enumerate(lines, 1):
-            stripped = line.lstrip()
-            fence = re.match(r"(`{3,}|~{3,})", stripped)
-            if fence:
-                char = fence.group(1)[0]
-                if not fenced:
-                    fenced, fence_char = True, char
-                elif char == fence_char:
-                    fenced = False
-                continue
-            if fenced:
-                continue
-            match = _HEADING_RE.match(line)
-            if not match:
-                continue
-            level = len(match.group(1))
-            heading = _display_heading(match.group(2))
-            base = _anchor_base(heading)
-            occurrence = anchor_counts[base]
-            anchor_counts[base] += 1
-            anchor = base if occurrence == 0 else f"{base}-{occurrence}"
-            headings.append((number, level, heading, anchor))
-        return headings
+    def _headings(
+        self, document: SourceDocument
+    ) -> list[tuple[int, int, str, str]]:
+        """Return the legacy tuple view over the canonical structural tree."""
+
+        return [
+            (
+                section.location.start_line,
+                section.level,
+                section.heading,
+                section.anchor,
+            )
+            for section in document.sections
+        ]
 
     def _internal_links(self, text: str, owner: Path) -> list[str]:
         links: set[str] = set()
@@ -281,25 +270,50 @@ class MarkdownCareerV1Adapter:
             links.add(f"{relative}#{parsed.fragment}" if parsed.fragment else relative)
         return sorted(links)
 
-    def parse_pipe_tables(self, path: str | Path) -> list[dict[str, Any]]:
-        """Parse GFM-style pipe tables in memory, including their owning lines."""
+    def source_document(self, path: str | Path) -> SourceDocument:
+        """Return the one-read in-memory document for a discovered source path."""
+
         source = self._resolve_local(path)
-        lines = source.read_text(encoding="utf-8").splitlines()
-        tables: list[dict[str, Any]] = []
-        index = 0
-        separator = re.compile(r"^\s*\|?\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)+\|?\s*$")
-        while index + 1 < len(lines):
-            if "|" not in lines[index] or not separator.match(lines[index + 1]):
-                index += 1
+        relative = source.relative_to(self.root).as_posix()
+        try:
+            return self._source_documents[relative]
+        except KeyError as exc:
+            raise KeyError(f"source was not part of discovery: {relative}") from exc
+    @staticmethod
+    def structural_block_is_safe(block: MarkdownBlock) -> bool:
+        """Ignore only generic fallback policy while preserving hard context."""
+
+        reasons = set(block.flags.exclusion_reasons)
+        if not block.has_explicit_disclosure_policy:
+            reasons.discard("disclosure_policy_P3")
+        if not block.has_explicit_fact_policy:
+            reasons.discard("fact_policy_F6")
+        return not reasons
+
+
+    def parse_pipe_tables(self, path: str | Path) -> list[dict[str, Any]]:
+        """Return the legacy table view backed by markdown-it token maps."""
+
+        document = self.source_document(path)
+        grouped: dict[str, dict[str, Any]] = {}
+        for block in document.blocks:
+            if (
+                block.kind != "table"
+                or block.table_identity is None
+                or block.table_location is None
+                or not self.structural_block_is_safe(block)
+            ):
                 continue
-            start = index
-            rows = [self._split_table_row(lines[index])]
-            index += 2
-            while index < len(lines) and "|" in lines[index] and lines[index].strip():
-                rows.append(self._split_table_row(lines[index]))
-                index += 1
-            tables.append({"start_line": start + 1, "end_line": index, "rows": rows})
-        return tables
+            table = grouped.setdefault(
+                block.table_identity,
+                {
+                    "start_line": block.table_location.start_line,
+                    "end_line": block.table_location.end_line,
+                    "rows": [],
+                },
+            )
+            table["rows"].append(list(block.cells))
+        return sorted(grouped.values(), key=lambda item: item["start_line"])
 
     @staticmethod
     def _split_table_row(line: str) -> list[str]:
@@ -315,37 +329,61 @@ class MarkdownCareerV1Adapter:
         sections: list[SourceSection] = []
         documents: list[str] = []
         section_lookup: dict[tuple[str, str, int, int], SourceSection] = {}
+        structural_lookup: dict[
+            tuple[str, str, int, int], MarkdownSection
+        ] = {}
+        parsed_documents: dict[str, SourceDocument] = {}
         for path in self._markdown_files():
             relative = path.relative_to(self.root).as_posix()
-            lines = path.read_text(encoding="utf-8").splitlines()
-            headings = self._headings(lines)
-            if not headings:
+            document = parse_markdown(path, source_root=self.root)
+            parsed_documents[relative] = document
+            if not document.sections:
                 continue
-            source_hash = _sha256(path)
-            title = next((heading for _, level, heading, _ in headings if level == 1), path.stem)
+            title = next(
+                (
+                    section.heading
+                    for section in document.sections
+                    if section.level == 1
+                ),
+                path.stem,
+            )
             if _blocked(title) or _EMAIL_RE.search(title) or _PHONE_RE.search(title):
                 continue
             safe_sections: list[SourceSection] = []
-            for position, (start, _level, heading, anchor) in enumerate(headings):
-                end = headings[position + 1][0] - 1 if position + 1 < len(headings) else len(lines)
-                body = "\n".join(lines[start - 1 : end])
-                if _blocked(body) or _EMAIL_RE.search(heading) or _PHONE_RE.search(heading):
+            for structural in document.sections:
+                if (
+                    structural.flags.secret_path
+                    or structural.flags.secret_content
+                    or structural.effective_fact_state is FactState.F6
+                    or structural.effective_disclosure is DisclosureLevel.P3
+                    or _blocked(structural.heading)
+                    or _EMAIL_RE.search(structural.heading)
+                    or _PHONE_RE.search(structural.heading)
+                ):
                     continue
-                outgoing = self._internal_links(body, path)
+                safe_text = "\n".join(
+                    block.text
+                    for block in structural.blocks
+                    if self.structural_block_is_safe(block)
+                )
+                start = structural.content_location.start_line
+                end = structural.content_location.end_line
                 item = SourceSection(
                     document_id=relative,
                     source_path=relative,
-                    source_hash=source_hash,
+                    source_hash=document.source_hash,
                     title=title,
-                    section=heading,
-                    section_anchor=anchor,
+                    section=structural.heading,
+                    section_anchor=structural.anchor,
                     domain=_domain(PurePosixPath(relative)),
-                    outgoing_internal_links=outgoing,
+                    outgoing_internal_links=self._internal_links(safe_text, path),
                     start_line=start,
                     end_line=end,
                 )
+                key = (relative, structural.anchor, start, end)
                 safe_sections.append(item)
-                section_lookup[(relative, anchor, start, end)] = item
+                section_lookup[key] = item
+                structural_lookup[key] = structural
             if safe_sections:
                 documents.append(relative)
                 sections.extend(safe_sections)
@@ -358,6 +396,8 @@ class MarkdownCareerV1Adapter:
         )
         self._manifest = manifest
         self._sections = section_lookup
+        self._source_documents = parsed_documents
+        self._structural_sections = structural_lookup
         return manifest
 
     def _company_id(self, ref: str | CompanyRef) -> str:
@@ -366,7 +406,9 @@ class MarkdownCareerV1Adapter:
     def list_companies(self) -> list[CompanyRef]:
         company_root = self._resolve_local("company-research")
         navigation = self._resolve_local("company-research/README.md")
-        nav_text = navigation.read_text(encoding="utf-8")
+        nav_text = self.source_document(
+            navigation.relative_to(self.root).as_posix()
+        ).text
         slugs: set[str] = set()
         for match in _LINK_RE.finditer(nav_text):
             target = match.group(1) or ""
@@ -385,8 +427,17 @@ class MarkdownCareerV1Adapter:
         companies: list[CompanyRef] = []
         for slug in sorted(slugs):
             readme = self._resolve_local(f"company-research/{slug}/README.md")
-            lines = readme.read_text(encoding="utf-8").splitlines()
-            heading = next((item[2] for item in self._headings(lines) if item[1] == 1), slug.replace("-", " ").title())
+            document = self.source_document(
+                readme.relative_to(self.root).as_posix()
+            )
+            heading = next(
+                (
+                    item.heading
+                    for item in document.sections
+                    if item.level == 1
+                ),
+                slug.replace("-", " ").title(),
+            )
             companies.append(CompanyRef(company_id=slug, display_name=heading, source_refs=[readme.relative_to(self.root).as_posix()]))
         return companies
 
@@ -398,8 +449,8 @@ class MarkdownCareerV1Adapter:
         directory = self._resolve_local(f"company-research/{slug}")
         result: dict[str, str] = {}
         for path in sorted(directory.glob("*.md")):
-            source = self._resolve_local(path.relative_to(self.root).as_posix())
-            result[source.relative_to(self.root).as_posix()] = source.read_text(encoding="utf-8")
+            relative = path.relative_to(self.root).as_posix()
+            result[relative] = self.source_document(relative).text
         return result
 
     def list_roles(self, company_ref: str | CompanyRef) -> list[RoleRef]:
@@ -415,7 +466,9 @@ class MarkdownCareerV1Adapter:
             if not all((directory / filename).is_file() for filename in _ROLE_DOSSIER_FILES):
                 continue
             source = self._resolve_local((directory / "job-description.md").relative_to(self.root).as_posix())
-            headings = self._headings(source.read_text(encoding="utf-8").splitlines())
+            headings = self._headings(
+                self.source_document(source.relative_to(self.root).as_posix())
+            )
             title = next(
                 (heading for _, level, heading, _ in headings if level == 1),
                 entry.name.removeprefix(f"{company_id}-").replace("-", " ").title(),
@@ -474,28 +527,37 @@ class MarkdownCareerV1Adapter:
         return resolver(request=request, adapter=self)
 
     def load_policy(self) -> dict[str, Any]:
-        path = self._resolve_local("personal-data/meta/fact-boundaries.md")
-        return {"source_path": path.relative_to(self.root).as_posix(), "source_hash": _sha256(path), "text": path.read_text(encoding="utf-8")}
+        relative = "personal-data/meta/fact-boundaries.md"
+        document = self.source_document(relative)
+        return {
+            "source_path": relative,
+            "source_hash": document.source_hash,
+            "text": document.text,
+        }
+
+    def _structural_section(self, section: SourceSection) -> MarkdownSection:
+        if section.start_line is None or section.end_line is None:
+            raise RuntimeError("section ownership range is unavailable")
+        key = (
+            section.source_path,
+            section.section_anchor,
+            section.start_line,
+            section.end_line,
+        )
+        try:
+            return self._structural_sections[key]
+        except KeyError as exc:
+            raise RuntimeError("section is not owned by the structural document") from exc
 
     def _section_text(self, section: SourceSection) -> str:
-        path = self._resolve_local(section.source_path)
-        if _sha256(path) != section.source_hash:
+        document = self.source_document(section.source_path)
+        if document.source_hash != section.source_hash:
             raise RuntimeError(f"source changed after discovery: {section.source_path}")
         if section.start_line is None or section.end_line is None:
             raise RuntimeError("section ownership range is unavailable")
-        owned_lines: list[str] = []
-        last_line = 0
-        with path.open("r", encoding="utf-8") as stream:
-            for line_number, line in enumerate(stream, 1):
-                last_line = line_number
-                if line_number < section.start_line:
-                    continue
-                if line_number > section.end_line:
-                    break
-                owned_lines.append(line.rstrip("\r\n"))
-        if last_line < section.end_line:
-            raise RuntimeError("section ownership range exceeds the source document")
-        return "\n".join(owned_lines)
+        return document.text_for_lines(section.start_line, section.end_line).rstrip(
+            "\r\n"
+        )
     @staticmethod
     def _clean_claim(raw: str) -> str:
         claim = re.sub(r"!?\[([^\]]+)\]\([^)]+\)", r"\1", raw)
@@ -507,109 +569,80 @@ class MarkdownCareerV1Adapter:
         claim = _redact(claim)
         return re.sub(r"\s+", " ", claim).strip(" \t,;，；")
 
-    def _claim_units(self, section: SourceSection, body: str) -> list[tuple[int, int, str, str]]:
-        lines = body.splitlines()
+    def _claim_units(
+        self, section: SourceSection, body: str | None = None
+    ) -> list[tuple[int, int, str, str]]:
+        """Extract claim units only from eligible markdown-it leaf blocks."""
+
+        del body
         units: list[tuple[int, int, str, str]] = []
-        paragraph: list[str] = []
-        paragraph_start = 0
-
-        def flush(end_offset: int) -> None:
-            nonlocal paragraph, paragraph_start
-            if paragraph:
-                raw_paragraph = " ".join(part.strip() for part in paragraph)
-                for raw in re.split(r"(?<=[.!?。！？])\s+", raw_paragraph):
-                    claim = self._clean_claim(raw)
-                    if claim:
-                        units.append((section.start_line + paragraph_start, section.start_line + end_offset, claim, raw))
-            paragraph = []
-
-        index = 0
-        while index < len(lines):
-            line = lines[index]
-            stripped = line.strip()
-            if index == 0 and _HEADING_RE.match(line):
-                index += 1
+        structural = self._structural_section(section)
+        for block in structural.blocks:
+            if not self.structural_block_is_safe(block):
                 continue
-            if not stripped:
-                flush(index - 1)
-                index += 1
+            if block.kind == "table":
+                if block.row_index == 0:
+                    continue
+                value = "; ".join(block.cells)
+            elif block.kind in {"list_item", "paragraph"}:
+                value = block.plain_text
+            else:
                 continue
-            if _HEADING_RE.match(line) or re.fullmatch(r"\s*[-:| ]+\s*", line):
-                flush(index - 1)
-                index += 1
-                continue
-            if "|" in line and index + 1 < len(lines) and re.fullmatch(
-                r"\s*\|?\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)+\|?\s*",
-                lines[index + 1],
-            ):
-                flush(index - 1)
-                index += 2
-                while index < len(lines) and lines[index].strip() and "|" in lines[index]:
-                    raw = lines[index]
-                    claim = self._clean_claim("; ".join(self._split_table_row(raw)))
-                    if claim:
-                        line_number = section.start_line + index
-                        units.append((line_number, line_number, claim, raw))
-                    index += 1
-                continue
-            if re.match(r"^\s*(?:[-*+]|\d+[.)、])\s+", line):
-                flush(index - 1)
-                claim = self._clean_claim(line)
+            raw_units = (
+                re.split(r"(?<=[.!?。！？])\s+", value)
+                if block.kind == "paragraph"
+                else [value]
+            )
+            for raw_unit in raw_units:
+                claim = self._clean_claim(raw_unit)
                 if claim:
-                    line_number = section.start_line + index
-                    units.append((line_number, line_number, claim, line))
-                index += 1
-                continue
-            if not paragraph:
-                paragraph_start = index
-            paragraph.append(line)
-            index += 1
-        flush(len(lines) - 1)
-        return units
-
-    def _document_gates(self, sections: list[SourceSection]) -> dict[str, tuple[FactState, DisclosureLevel]]:
-        gates: dict[str, tuple[FactState, DisclosureLevel]] = {}
-        fact_label = re.compile(
-            r"(?:fact(?:\s+(?:status|state))?|事实(?:状态|级别))"
-            r".{0,16}?(F[1-6])",
-            re.I,
-        )
-        disclosure_label = re.compile(
-            r"(?:publicity|disclosure|公开(?:级别|等级|范围))"
-            r".{0,16}?(P[0-3])",
-            re.I,
-        )
-        for section in sorted(sections, key=lambda item: (item.source_path, item.start_line or 0)):
-            if section.source_path in gates:
-                continue
-            for _, _, _, raw in self._claim_units(section, self._section_text(section)):
-                fact = fact_label.search(raw)
-                disclosure = disclosure_label.search(raw)
-                if fact is not None and disclosure is not None:
-                    gates[section.source_path] = (
-                        FactState(fact.group(1).upper()),
-                        DisclosureLevel(disclosure.group(1).upper()),
+                    units.append(
+                        (
+                            block.location.start_line,
+                            block.location.end_line,
+                            claim,
+                            block.text,
+                        )
                     )
-                    break
+        return units
+    def _structural_block_for_unit(
+        self, section: SourceSection, start_line: int, end_line: int
+    ) -> MarkdownBlock | None:
+        block = self.source_document(section.source_path).block_for_span(
+            start_line, end_line
+        )
+        if block is None or block.section_identity != self._structural_section(
+            section
+        ).identity:
+            return None
+        return block
+
+
+    def _document_gates(
+        self, sections: list[SourceSection]
+    ) -> dict[str, tuple[FactState, DisclosureLevel]]:
+        gates: dict[str, tuple[FactState, DisclosureLevel]] = {}
+        for section in sections:
+            document = self.source_document(section.source_path)
+            if (
+                document.document_fact_state is not None
+                and document.document_disclosure is not None
+            ):
+                gates[section.source_path] = (
+                    document.document_fact_state,
+                    document.document_disclosure,
+                )
         return gates
 
-    def _heading_contexts(self, sections: list[SourceSection]) -> dict[tuple[str, int], str]:
-        grouped: defaultdict[str, list[SourceSection]] = defaultdict(list)
-        for section in sections:
-            grouped[section.source_path].append(section)
+    def _heading_contexts(
+        self, sections: list[SourceSection]
+    ) -> dict[tuple[str, int], str]:
         contexts: dict[tuple[str, int], str] = {}
-        for source_path, owned_sections in grouped.items():
-            path = self._resolve_local(source_path)
-            if _sha256(path) != owned_sections[0].source_hash:
-                raise RuntimeError(f"source changed after discovery: {source_path}")
-            stack: list[tuple[int, str]] = []
-            for line, level, heading, _anchor in self._headings(
-                path.read_text(encoding="utf-8").splitlines()
-            ):
-                while stack and stack[-1][0] >= level:
-                    stack.pop()
-                stack.append((level, heading))
-                contexts[(source_path, line)] = " / ".join(item[1] for item in stack)
+        for section in sections:
+            structural = self._structural_section(section)
+            contexts[(section.source_path, section.start_line or 0)] = " / ".join(
+                structural.heading_ancestry
+            )
         return contexts
 
     @staticmethod
@@ -924,17 +957,61 @@ class MarkdownCareerV1Adapter:
                     section.source_path,
                     semantic_gate or (FactState.F5, DisclosureLevel.P3),
                 )
-                for unit in self._claim_units(section, self._section_text(section)):
+                structural_section = self._structural_section(section)
+                for unit in self._claim_units(section):
                     start_line, end_line, claim, raw = unit
+                    block = self._structural_block_for_unit(
+                        section, start_line, end_line
+                    )
+                    if block is None or not self.structural_block_is_safe(block):
+                        continue
                     if _blocked(raw):
                         continue
-                    facts = {FactState(value.upper()) for value in _FACT_RE.findall(raw)}
-                    disclosures = {DisclosureLevel(value.upper()) for value in _DISCLOSURE_RE.findall(raw)}
-                    if facts & {FactState.F4, FactState.F5, FactState.F6} or DisclosureLevel.P3 in disclosures:
-                        continue
-                    fact = max(facts, key=lambda value: int(value.value[1])) if facts else inherited_fact
-                    disclosure = max(disclosures, key=lambda value: int(value.value[1])) if disclosures else inherited_disclosure
-                    if fact in {FactState.F4, FactState.F5, FactState.F6} or disclosure == DisclosureLevel.P3:
+                    facts = {
+                        FactState(value.upper()) for value in _FACT_RE.findall(raw)
+                    }
+                    disclosures = {
+                        DisclosureLevel(value.upper())
+                        for value in _DISCLOSURE_RE.findall(raw)
+                    }
+                    explicit_facts = {
+                        value
+                        for value in (
+                            structural_section.effective_fact_state,
+                            block.fact_state,
+                            *facts,
+                        )
+                        if value is not None
+                    }
+                    explicit_disclosures = {
+                        value
+                        for value in (
+                            structural_section.effective_disclosure,
+                            block.disclosure,
+                            *disclosures,
+                        )
+                        if value is not None
+                    }
+                    fact = (
+                        max(
+                            explicit_facts,
+                            key=lambda value: int(value.value[1]),
+                        )
+                        if explicit_facts
+                        else inherited_fact
+                    )
+                    disclosure = (
+                        max(
+                            explicit_disclosures,
+                            key=lambda value: int(value.value[1]),
+                        )
+                        if explicit_disclosures
+                        else inherited_disclosure
+                    )
+                    if (
+                        fact in {FactState.F4, FactState.F5, FactState.F6}
+                        or disclosure is DisclosureLevel.P3
+                    ):
                         continue
                     overlap = self._strong_terms(
                         query_terms

@@ -1,0 +1,226 @@
+{
+  "fixture_version": 1,
+  "policy_cases": [
+    {
+      "case_id": "policy-inherited-f6-p3",
+      "typescript_input": {"document_fact_policy": "F1", "document_disclosure_policy": "P0", "ancestor_fact_policy": "F6", "ancestor_disclosure_policy": "P3"},
+      "python_record": {"fact_state": "F6", "disclosure_level": "P3", "proposed_claim": "Synthetic blocked record"},
+      "mode": "targeted_application",
+      "expected_typescript": {"effective_fact_policy": "F6", "effective_disclosure_policy": "P3", "blocked": true, "decision": "denied", "user_confirmation_required": false, "blocking_reasons": ["fact_policy:F6", "disclosure_policy:P3"]},
+      "expected_python": {"allowed_as_candidate": false, "allowed_in_output": false, "confirmation_required": false, "current_verification_required": false, "reason_codes": ["excluded_from_processing"], "record": null}
+    },
+    {
+      "case_id": "policy-p2-confirmed",
+      "typescript_input": {"document_fact_policy": "F2", "document_disclosure_policy": "P0", "ancestor_disclosure_policy": "P2", "output_mode": "targeted_application", "p2_confirmed": true},
+      "python_record": {"fact_state": "F2", "disclosure_level": "P2", "proposed_claim": "Synthetic targeted record"},
+      "mode": "targeted_application",
+      "expected_typescript": {"effective_fact_policy": "F2", "effective_disclosure_policy": "P2", "blocked": false, "decision": "allowed", "user_confirmation_required": false, "blocking_reasons": []},
+      "expected_python": {"allowed_as_candidate": true, "allowed_in_output": true, "confirmation_required": false, "current_verification_required": false, "reason_codes": [], "record": {"fact_state": "F2", "disclosure_level": "P2", "proposed_claim": "Synthetic targeted record"}}
+    },
+    {
+      "case_id": "policy-p2-unknown",
+      "typescript_input": {"document_fact_policy": "F2", "document_disclosure_policy": "P2", "output_mode": "targeted_application", "p2_confirmed": false},
+      "python_record": {"fact_state": "F2", "disclosure_level": "P2", "proposed_claim": "Synthetic targeted record"},
+      "mode": "targeted_application",
+      "expected_typescript": {"effective_fact_policy": "F2", "effective_disclosure_policy": "P2", "blocked": true, "decision": "needs_confirmation", "user_confirmation_required": true, "blocking_reasons": ["p2_permission_unknown"]},
+      "expected_python": {"allowed_as_candidate": true, "allowed_in_output": true, "confirmation_required": false, "current_verification_required": false, "reason_codes": [], "record": {"fact_state": "F2", "disclosure_level": "P2", "proposed_claim": "Synthetic targeted record"}}
+    }
+  ],
+  "approval_cases": [
+    {
+      "case_id": "approval-extractive-mechanical",
+      "base_case": "p2-extractive-confirmed",
+      "candidate_overrides": {"evidence_id": "evidence.extractive", "claim_mode": "extractive", "input_id": "evidence-input.extractive", "effective_fact_policy": "F1", "effective_disclosure_policy": "P0"},
+      "reviews": {"schema_version": 1, "decisions": []},
+      "options": {"approved_safe_claims": {"evidence.extractive": "- Built a queue worker for 样例服务.\n"}, "user_confirmations": {}},
+      "expected": {"accepted": true, "origin_evidence_ids": ["evidence.extractive"], "claim_id": "claim.evidence.extractive", "approval_basis": "mechanical", "reviewer_decision_ids": [], "approved_safe_claim": "- Built a queue worker for 样例服务.\n", "disclosure_decision": "allowed", "disclosure_audience": "recruiter", "disclosure_purpose": "resume evidence", "contribution_qualifiers": [], "metric_qualifiers": [], "claim_mode": "extractive"}
+    },
+    {
+      "case_id": "approval-reviewed-independent",
+      "base_case": "p2-extractive-confirmed",
+      "candidate_overrides": {"evidence_id": "evidence.semantic", "claim_mode": "reviewed-semantic", "input_id": "evidence-input.semantic", "effective_fact_policy": "F1", "effective_disclosure_policy": "P0"},
+      "reviews": {"schema_version": 1, "decisions": [
+        {"review_id": "review.evidence.semantic", "evidence_id": "evidence.semantic", "reviewer_id": "reviewer.evidence", "review_kind": "evidence", "outcome": "approve", "reasoning": "Synthetic evidence review.", "approved_safe_claim": "Built and operated a queue worker for 样例服务."},
+        {"review_id": "review.contribution.semantic", "evidence_id": "evidence.semantic", "reviewer_id": "reviewer.contribution", "review_kind": "contribution_metric", "outcome": "approve", "reasoning": "Synthetic contribution review.", "approved_safe_claim": "Built and operated a queue worker for 样例服务."},
+        {"review_id": "review.privacy.semantic", "evidence_id": "evidence.semantic", "reviewer_id": "reviewer.privacy", "review_kind": "privacy", "outcome": "approve", "reasoning": "Synthetic privacy review.", "approved_safe_claim": "Built and operated a queue worker for 样例服务.", "disclosure_decision": "allowed", "disclosure_audience": "recruiter", "disclosure_purpose": "synthetic resume"}
+      ]},
+      "options": {"approved_safe_claims": {"evidence.semantic": "Built and operated a queue worker for 样例服务."}, "user_confirmations": {}},
+      "expected": {"accepted": true, "origin_evidence_ids": ["evidence.semantic"], "claim_id": "claim.evidence.semantic", "approval_basis": "independent_review", "reviewer_decision_ids": ["review.evidence.semantic", "review.contribution.semantic", "review.privacy.semantic"], "approved_safe_claim": "Built and operated a queue worker for 样例服务.", "disclosure_decision": "allowed", "disclosure_audience": "recruiter", "disclosure_purpose": "synthetic resume", "contribution_qualifiers": [], "metric_qualifiers": [], "claim_mode": "reviewed-semantic"}
+    },
+    {
+      "case_id": "approval-reviewed-qualifier-preservation",
+      "base_case": "p2-extractive-confirmed",
+      "candidate_overrides": {"evidence_id": "evidence.qualifier", "claim_mode": "reviewed-semantic", "input_id": "evidence-input.qualifier", "effective_fact_policy": "F1", "effective_disclosure_policy": "P0"},
+      "reviews": {"schema_version": 1, "decisions": [
+        {"review_id": "review.evidence.qualifier", "evidence_id": "evidence.qualifier", "reviewer_id": "reviewer.evidence", "review_kind": "evidence", "outcome": "approve", "reasoning": "Synthetic evidence review.", "approved_safe_claim": "Built and operated a queue worker for 样例服务."},
+        {"review_id": "review.contribution.qualifier", "evidence_id": "evidence.qualifier", "reviewer_id": "reviewer.contribution", "review_kind": "contribution_metric", "outcome": "approve", "reasoning": "Synthetic contribution review.", "approved_safe_claim": "Built and operated a queue worker for 样例服务.", "contribution_qualifiers": [{"text": "Team pilot", "scope": "queue worker", "actor": "team"}], "metric_qualifiers": [{"text": "Latency", "name": "p95", "value": "20", "unit": "percent", "qualifier": "pilot"}]},
+        {"review_id": "review.privacy.qualifier", "evidence_id": "evidence.qualifier", "reviewer_id": "reviewer.privacy", "review_kind": "privacy", "outcome": "approve", "reasoning": "Synthetic privacy review.", "approved_safe_claim": "Built and operated a queue worker for 样例服务.", "disclosure_decision": "allowed", "disclosure_audience": "recruiter", "disclosure_purpose": "synthetic resume"}
+      ]},
+      "options": {"approved_safe_claims": {"evidence.qualifier": "Built and operated a queue worker for 样例服务."}, "user_confirmations": {}},
+      "expected": {"accepted": true, "origin_evidence_ids": ["evidence.qualifier"], "claim_id": "claim.evidence.qualifier", "approval_basis": "independent_review", "reviewer_decision_ids": ["review.evidence.qualifier", "review.contribution.qualifier", "review.privacy.qualifier"], "approved_safe_claim": "Built and operated a queue worker for 样例服务.", "disclosure_decision": "allowed", "disclosure_audience": "recruiter", "disclosure_purpose": "synthetic resume", "contribution_qualifiers": [{"text": "Team pilot", "scope": "queue worker", "actor": "team"}], "metric_qualifiers": [{"text": "Latency", "name": "p95", "value": "20", "unit": "percent", "qualifier": "pilot"}], "claim_mode": "reviewed-semantic"}
+    },
+    {
+      "case_id": "approval-review-claim-binding-mismatch",
+      "base_case": "p2-extractive-confirmed",
+      "candidate_overrides": {"evidence_id": "evidence.binding", "claim_mode": "reviewed-semantic", "input_id": "evidence-input.binding", "effective_fact_policy": "F1", "effective_disclosure_policy": "P0"},
+      "reviews": {"schema_version": 1, "decisions": [
+        {"review_id": "review.evidence.binding", "evidence_id": "evidence.binding", "reviewer_id": "reviewer.evidence", "review_kind": "evidence", "outcome": "approve", "reasoning": "Synthetic evidence review.", "approved_safe_claim": "Built and operated a queue worker for 样例服务."},
+        {"review_id": "review.contribution.binding", "evidence_id": "evidence.binding", "reviewer_id": "reviewer.contribution", "review_kind": "contribution_metric", "outcome": "approve", "reasoning": "Synthetic contribution review.", "approved_safe_claim": "Built and operated a queue worker for 样例服务."},
+        {"review_id": "review.privacy.binding", "evidence_id": "evidence.binding", "reviewer_id": "reviewer.privacy", "review_kind": "privacy", "outcome": "approve", "reasoning": "Synthetic privacy review.", "approved_safe_claim": "Built and operated a queue worker for 样例服务.", "disclosure_decision": "allowed", "disclosure_audience": "recruiter", "disclosure_purpose": "synthetic resume"}
+      ]},
+      "options": {"approved_safe_claims": {"evidence.binding": "A different semantic synthetic claim."}, "user_confirmations": {}},
+      "expected": {"accepted": false, "error_message": "evidence 'evidence.binding': approved_safe_claim does not exactly match all approving reviews", "ts_error_code": "REVIEW_CLAIM_BINDING_MISMATCH"}
+    },
+    {
+      "case_id": "approval-reviewed-disagreement",
+      "base_case": "p2-extractive-confirmed",
+      "candidate_overrides": {"evidence_id": "evidence.disagreement", "claim_mode": "reviewed-semantic", "input_id": "evidence-input.disagreement", "effective_fact_policy": "F1", "effective_disclosure_policy": "P0"},
+      "reviews": {"schema_version": 1, "decisions": [
+        {"review_id": "review.evidence.disagreement", "evidence_id": "evidence.disagreement", "reviewer_id": "reviewer.evidence", "review_kind": "evidence", "outcome": "disagree", "reasoning": "Synthetic disagreement.", "approved_safe_claim": "A semantic synthetic claim."},
+        {"review_id": "review.contribution.disagreement", "evidence_id": "evidence.disagreement", "reviewer_id": "reviewer.contribution", "review_kind": "contribution_metric", "outcome": "approve", "reasoning": "Synthetic contribution review.", "approved_safe_claim": "A semantic synthetic claim."},
+        {"review_id": "review.privacy.disagreement", "evidence_id": "evidence.disagreement", "reviewer_id": "reviewer.privacy", "review_kind": "privacy", "outcome": "approve", "reasoning": "Synthetic privacy review.", "approved_safe_claim": "A semantic synthetic claim.", "disclosure_decision": "allowed", "disclosure_audience": "recruiter", "disclosure_purpose": "synthetic resume"}
+      ]},
+      "options": {"approved_safe_claims": {"evidence.disagreement": "A semantic synthetic claim."}, "user_confirmations": {}},
+      "expected": {"accepted": false, "error_message": "evidence 'evidence.disagreement': unsupported reviewer disagreement/rejection in ['evidence']; approval fails closed", "ts_error_code": "KERNEL_VALIDATION_FAILED"}
+    },
+    {
+      "case_id": "approval-blocked-p3",
+      "base_case": "p2-extractive-confirmed",
+      "candidate_overrides": {"evidence_id": "evidence.blocked-p3", "input_id": "evidence-input.blocked-p3", "effective_fact_policy": "F6", "effective_disclosure_policy": "P3"},
+      "reviews": {"schema_version": 1, "decisions": []},
+      "options": {"approved_safe_claims": {"evidence.blocked-p3": "- Built a queue worker for 样例服务.\n"}, "user_confirmations": {}},
+      "expected": {"accepted": false, "error_message": "evidence 'evidence.blocked-p3': blocked structural policy cannot be approved", "ts_error_code": "KERNEL_VALIDATION_FAILED"}
+    },
+    {
+      "case_id": "approval-reject-f3",
+      "base_case": "p2-extractive-confirmed",
+      "candidate_overrides": {"evidence_id": "evidence.f3", "input_id": "evidence-input.f3", "effective_fact_policy": "F3", "effective_disclosure_policy": "P0"},
+      "reviews": {"schema_version": 1, "decisions": []},
+      "options": {"approved_safe_claims": {"evidence.f3": "- Built a queue worker for 样例服务.\n"}, "user_confirmations": {}},
+      "expected": {"accepted": false, "error_message": "evidence 'evidence.f3': fact policy F3 requires parser-revalidated current freshness proof before approval", "ts_error_code": "F3_CURRENT_VERIFICATION_REQUIRED"}
+    },
+    {
+      "case_id": "approval-reject-f4",
+      "base_case": "p2-extractive-confirmed",
+      "candidate_overrides": {"evidence_id": "evidence.f4", "input_id": "evidence-input.f4", "effective_fact_policy": "F4", "effective_disclosure_policy": "P0"},
+      "reviews": {"schema_version": 1, "decisions": []},
+      "options": {"approved_safe_claims": {"evidence.f4": "- Built a queue worker for 样例服务.\n"}, "user_confirmations": {}},
+      "expected": {"accepted": false, "error_message": "evidence 'evidence.f4': fact policy F4 is unapprovable without a confirmed fact state", "ts_error_code": "F4_UNCONFIRMED_FACT"}
+    },
+    {
+      "case_id": "approval-reject-f5",
+      "base_case": "p2-extractive-confirmed",
+      "candidate_overrides": {"evidence_id": "evidence.f5", "input_id": "evidence-input.f5", "effective_fact_policy": "F5", "effective_disclosure_policy": "P0"},
+      "reviews": {"schema_version": 1, "decisions": []},
+      "options": {"approved_safe_claims": {"evidence.f5": "- Built a queue worker for 样例服务.\n"}, "user_confirmations": {}},
+      "expected": {"accepted": false, "error_message": "evidence 'evidence.f5': fact policy F5 is unapprovable without a confirmed fact state", "ts_error_code": "F5_UNSUPPORTED_FACT"}
+    },
+    {
+      "case_id": "approval-p2-disagreement-preflight",
+      "base_case": "p2-extractive-confirmed",
+      "candidate_overrides": {"evidence_id": "evidence.p2-disagreement", "input_id": "evidence-input.p2-disagreement", "effective_fact_policy": "F2", "effective_disclosure_policy": "P2"},
+      "reviews": {"schema_version": 1, "decisions": [
+        {"review_id": "review.privacy.p2-disagreement", "evidence_id": "evidence.p2-disagreement", "reviewer_id": "reviewer.privacy.synthetic", "review_kind": "privacy", "outcome": "disagree", "reasoning": "Synthetic P2 disagreement.", "approved_safe_claim": "- Built a queue worker for 样例服务.", "disclosure_decision": "allowed", "disclosure_audience": "hiring_team", "disclosure_purpose": "targeted_application"}
+      ]},
+      "options": {"approved_safe_claims": {"evidence.p2-disagreement": "- Built a queue worker for 样例服务.\n"}, "user_confirmations": {}},
+      "expected": {"accepted": false, "error_message": "evidence 'evidence.p2-disagreement': unsupported reviewer disagreement/rejection in ['privacy']; approval fails closed", "ts_error_code": "KERNEL_VALIDATION_FAILED"}
+    },
+    {
+      "case_id": "approval-reject-unresolved-evidence-input",
+      "base_case": "p2-extractive-confirmed",
+      "candidate_overrides": {"evidence_id": "evidence.unresolved-input", "input_id": "evidence-input.unresolved", "effective_fact_policy": "F1", "effective_disclosure_policy": "P0"},
+      "evidence_unresolved_questions": ["Revalidate the synthetic source."],
+      "reviews": {"schema_version": 1, "decisions": []},
+      "options": {"approved_safe_claims": {"evidence.unresolved-input": "- Built a queue worker for 样例服务.\n"}, "user_confirmations": {}},
+      "expected": {"accepted": false, "error_message": "normalized evidence input 'evidence-input.unresolved' has unresolved questions; approval fails closed until revalidated", "ts_error_code": "EVIDENCE_INPUT_UNRESOLVED_QUESTIONS"}
+    },
+    {
+      "case_id": "approval-reject-unresolved-extractive",
+      "base_case": "p2-extractive-confirmed",
+      "candidate_overrides": {"evidence_id": "evidence.unresolved-claim", "input_id": "evidence-input.unresolved-claim", "effective_fact_policy": "F1", "effective_disclosure_policy": "P0", "unresolved_questions": ["Confirm the synthetic claim."]},
+      "reviews": {"schema_version": 1, "decisions": []},
+      "options": {"approved_safe_claims": {"evidence.unresolved-claim": "- Built a queue worker for 样例服务.\n"}, "user_confirmations": {}},
+      "expected": {"accepted": false, "error_message": "evidence 'evidence.unresolved-claim': extractive approval cannot proceed with unresolved questions", "ts_error_code": "EXTRACTIVE_UNRESOLVED_QUESTIONS"}
+    },
+    {
+      "case_id": "approval-reject-owner-team",
+      "base_case": "p2-extractive-confirmed",
+      "candidate_overrides": {"evidence_id": "evidence.owner-team", "input_id": "evidence-input.owner-team", "owner": "team", "effective_fact_policy": "F1", "effective_disclosure_policy": "P0"},
+      "reviews": {"schema_version": 1, "decisions": []},
+      "options": {"approved_safe_claims": {"evidence.owner-team": "- Built a queue worker for 样例服务.\n"}, "user_confirmations": {}},
+      "expected": {"accepted": false, "error_message": "evidence 'evidence.owner-team': owner team is not candidate; ownership must be resolved in reviewed candidate IR", "ts_error_code": "EVIDENCE_OWNER_NOT_CANDIDATE"}
+    },
+    {
+      "case_id": "approval-reject-owner-organization",
+      "base_case": "p2-extractive-confirmed",
+      "candidate_overrides": {"evidence_id": "evidence.owner-organization", "input_id": "evidence-input.owner-organization", "owner": "organization", "effective_fact_policy": "F1", "effective_disclosure_policy": "P0"},
+      "reviews": {"schema_version": 1, "decisions": []},
+      "options": {"approved_safe_claims": {"evidence.owner-organization": "- Built a queue worker for 样例服务.\n"}, "user_confirmations": {}},
+      "expected": {"accepted": false, "error_message": "evidence 'evidence.owner-organization': owner organization is not candidate; ownership must be resolved in reviewed candidate IR", "ts_error_code": "EVIDENCE_OWNER_NOT_CANDIDATE"}
+    },
+    {
+      "case_id": "approval-reject-owner-unknown",
+      "base_case": "p2-extractive-confirmed",
+      "candidate_overrides": {"evidence_id": "evidence.owner-unknown", "input_id": "evidence-input.owner-unknown", "owner": "unknown", "effective_fact_policy": "F1", "effective_disclosure_policy": "P0"},
+      "reviews": {"schema_version": 1, "decisions": []},
+      "options": {"approved_safe_claims": {"evidence.owner-unknown": "- Built a queue worker for 样例服务.\n"}, "user_confirmations": {}},
+      "expected": {"accepted": false, "error_message": "evidence 'evidence.owner-unknown': owner unknown is not candidate; ownership must be resolved in reviewed candidate IR", "ts_error_code": "EVIDENCE_OWNER_NOT_CANDIDATE"}
+    },
+    {
+      "case_id": "approval-reject-requirement-review",
+      "base_case": "p2-extractive-confirmed",
+      "candidate_overrides": {"evidence_id": "evidence.requirement-review", "input_id": "evidence-input.requirement-review", "effective_fact_policy": "F1", "effective_disclosure_policy": "P0"},
+      "reviews": {"schema_version": 1, "decisions": [
+        {"review_id": "review.requirement.claim", "evidence_id": "evidence.requirement-review", "reviewer_id": "reviewer.requirement", "review_kind": "requirement", "outcome": "approve", "reasoning": "Synthetic requirement review.", "approved_safe_claim": "- Built a queue worker for 样例服务.\n"}
+      ]},
+      "options": {"approved_safe_claims": {"evidence.requirement-review": "- Built a queue worker for 样例服务.\n"}, "user_confirmations": {}},
+      "expected": {"accepted": false, "error_message": "evidence 'evidence.requirement-review': requirement review is not valid for claim approval", "ts_error_code": "REVIEW_KIND_NOT_APPLICABLE"}
+    }
+  ],
+  "lock_cases": [
+    {
+      "case_id": "lock-exact-and-mutation",
+      "approved_claims": {"schema_version": 1, "claims": [{"claim_id": "claim.lock", "origin_evidence_ids": ["evidence.extractive"], "approved_safe_claim": "- Built a queue worker for 样例服务.\n", "approval_basis": "mechanical", "reviewer_decision_ids": [], "claim_mode": "extractive", "contribution_qualifiers": [], "metric_qualifiers": [], "disclosure_decision": "allowed", "disclosure_audience": "recruiter", "disclosure_purpose": "resume evidence"}]},
+      "exact_final_claims": {"claim.lock": "- Built a queue worker for 样例服务.\n"},
+      "mutated_final_claims": {"claim.lock": "Built and owned a queue worker for 样例服务."},
+      "expected": {"exact_accepted": true, "mutation_accepted": false, "error_message": "final claim text must exactly equal approved_safe_claim for IDs: ['claim.lock']", "ts_error_code": "KERNEL_VALIDATION_FAILED"}
+    }
+  ],
+  "provenance_cases": [
+    {
+      "case_id": "provenance-closed",
+      "records": [{"claim_id": "claim.provenance", "evidence_id": "evidence.provenance", "evidence_ids": ["evidence.provenance"], "source": {"path": "sources/record.md", "section": "section.evidence", "source_hash": "sha256:addd9e85b3a41264842ae96705a2d6b8e15d52bd47749dec3d19c72efbd83fdd"}, "fact_state": "F1", "disclosure": "P0", "output_mode": "targeted_application", "rendered_claim": "- Built a queue worker for 样例服务.\n", "transformations": []}],
+      "visible_claim_ids": ["claim.provenance"],
+      "expected": {"closed": true, "records": [{"claim_id": "claim.provenance", "evidence_ids": ["evidence.provenance"], "source_refs": ["sources/record.md#section.evidence@sha256:addd9e85b3a41264842ae96705a2d6b8e15d52bd47749dec3d19c72efbd83fdd"], "fact_state": "F1", "disclosure": "P0", "output_mode": "targeted_application", "rendered_claim": "- Built a queue worker for 样例服务.\n", "transformations": []}]}
+    },
+    {
+      "case_id": "provenance-missing-origin",
+      "records": [{"claim_id": "claim.missing", "evidence_id": "evidence.missing", "evidence_ids": ["evidence.missing"], "source": {"path": "sources/record.md", "section": "section.evidence", "source_hash": ""}, "fact_state": "F1", "disclosure": "P0", "output_mode": "targeted_application", "rendered_claim": "Synthetic missing origin", "transformations": []}],
+      "visible_claim_ids": ["claim.missing"],
+      "expected": {"closed": false, "records": []}
+    }
+  ],
+  "closure_cases": [
+    {
+      "case_id": "closure-closed",
+      "approved_claim_case": "approved-claims-extractive-accepted",
+      "evidence_case": "normalized-evidence-accepted",
+      "review_case": "review-decision-accepted",
+      "visible_claim_ids": ["claim.queue.extractive"],
+      "expected": {"closed": true, "missing": [], "missing_origin_evidence_ids": [], "missing_review_decision_ids": [], "missing_source_evidence_ids": [], "uncovered_claim_ids": []}
+    },
+    {
+      "case_id": "closure-missing-origin",
+      "approved_claim_case": "approved-claims-extractive-accepted",
+      "evidence_case": "normalized-evidence-accepted",
+      "review_case": "review-decision-accepted",
+      "origin_evidence_override": "evidence.missing",
+      "visible_claim_ids": ["claim.queue.extractive"],
+      "expected": {"closed": false, "missing": ["evidence.missing"], "missing_origin_evidence_ids": ["evidence.missing"], "missing_review_decision_ids": [], "missing_source_evidence_ids": [], "uncovered_claim_ids": []}
+    }
+  ],
+  "invalid_policy_cases": [
+    {"case_id": "invalid-fact-marker", "defaults": {"fact": "F9"}, "text": "synthetic text", "expected_error": "unknown fact policy \"F9\""},
+    {"case_id": "invalid-disclosure-marker", "defaults": {"disclosure": "P9"}, "text": "synthetic text", "expected_error": "unknown disclosure policy \"P9\""}
+  ]
+}

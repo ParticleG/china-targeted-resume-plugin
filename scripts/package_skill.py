@@ -14,8 +14,13 @@ import sys
 import tempfile
 import zipfile
 
-_ALLOWED_FILES = frozenset({"README.md", "SKILL.md", "pyproject.toml", "uv.lock"})
-_ALLOWED_DIRECTORIES = frozenset({"references", "assets", "schemas", "scripts", "src"})
+_CANONICAL_SKILL_DIRECTORY = Path("skills/china-targeted-resume")
+_PROJECT_FILES = frozenset({"README.md", "pyproject.toml", "uv.lock"})
+_PROJECT_DIRECTORIES = frozenset({"assets", "schemas", "scripts", "src"})
+_SKILL_FILES = frozenset({"SKILL.md"})
+_SKILL_DIRECTORIES = frozenset({"references"})
+_ARCHIVE_FILES = _PROJECT_FILES | _SKILL_FILES
+_ARCHIVE_DIRECTORIES = _PROJECT_DIRECTORIES | _SKILL_DIRECTORIES
 _EXCLUDED_PARTS = frozenset(
     {
         ".git",
@@ -73,29 +78,75 @@ def _check_symlink(path: Path, project_root: Path) -> None:
         raise ValueError(f"Symlink escapes the project: {path} -> {target}")
 
 
-def _iter_selected(project_root: Path) -> list[Path]:
-    selected: list[Path] = []
-    for name in sorted(_ALLOWED_FILES | _ALLOWED_DIRECTORIES):
-        candidate = project_root / name
+def _collect_selected(
+    project_root: Path,
+    source_root: Path,
+    file_names: frozenset[str],
+    directory_names: frozenset[str],
+    *,
+    reject_symlinks: bool,
+) -> list[tuple[Path, Path]]:
+    selected: list[tuple[Path, Path]] = []
+    for name in sorted(file_names | directory_names):
+        candidate = source_root / name
         if not candidate.exists() and not candidate.is_symlink():
             continue
         _check_symlink(candidate, project_root)
-        selected.append(candidate)
+        if reject_symlinks and candidate.is_symlink():
+            raise ValueError(f"Canonical Skill resources must be real files: {candidate}")
+        selected.append((candidate, Path(name)))
         if candidate.is_dir() and not candidate.is_symlink():
             for descendant in sorted(candidate.rglob("*")):
-                relative = descendant.relative_to(project_root)
+                relative = descendant.relative_to(source_root)
                 if _is_excluded(relative):
                     continue
                 _check_symlink(descendant, project_root)
-                selected.append(descendant)
+                if reject_symlinks and descendant.is_symlink():
+                    raise ValueError(
+                        f"Canonical Skill resources must not contain links: {descendant}"
+                    )
+                selected.append((descendant, relative))
+    return selected
+
+
+def _iter_selected(project_root: Path) -> list[tuple[Path, Path]]:
+    skill_root = project_root / _CANONICAL_SKILL_DIRECTORY
+    if not skill_root.is_dir() or skill_root.is_symlink():
+        raise FileNotFoundError(
+            f"Canonical Skill directory is missing or linked: {skill_root}"
+        )
+    skill_file = skill_root / "SKILL.md"
+    references = skill_root / "references"
+    if not skill_file.is_file() or skill_file.is_symlink():
+        raise FileNotFoundError(f"Canonical Skill file is missing or linked: {skill_file}")
+    if not references.is_dir() or references.is_symlink():
+        raise FileNotFoundError(
+            f"Canonical Skill references are missing or linked: {references}"
+        )
+
+    selected = _collect_selected(
+        project_root,
+        project_root,
+        _PROJECT_FILES,
+        _PROJECT_DIRECTORIES,
+        reject_symlinks=False,
+    )
+    selected.extend(
+        _collect_selected(
+            project_root,
+            skill_root,
+            _SKILL_FILES,
+            _SKILL_DIRECTORIES,
+            reject_symlinks=True,
+        )
+    )
     return selected
 
 
 def _stage(project_root: Path, staging_root: Path) -> Path:
     staged_project = staging_root / project_root.name
     staged_project.mkdir(mode=0o700)
-    for source in _iter_selected(project_root):
-        relative = source.relative_to(project_root)
+    for source, relative in _iter_selected(project_root):
         if _is_excluded(relative):
             continue
         destination = staged_project / relative
@@ -136,19 +187,27 @@ def _find_skill_creator_script() -> Path | None:
 
 
 def _validate_archive(archive: Path, skill_name: str) -> None:
+    skill_members: list[str] = []
     with zipfile.ZipFile(archive) as bundle:
         for member in bundle.infolist():
             path = PurePosixPath(member.filename)
             if path.is_absolute() or ".." in path.parts or not path.parts:
                 raise ValueError(f"Unsafe archive member: {member.filename}")
+            if stat.S_ISLNK(member.external_attr >> 16):
+                raise ValueError(f"Archive links are not allowed: {member.filename}")
             parts = path.parts[1:] if path.parts[0] == skill_name else path.parts
             if not parts:
                 continue
-            if parts[0] not in _ALLOWED_FILES | _ALLOWED_DIRECTORIES:
+            if parts[0] not in _ARCHIVE_FILES | _ARCHIVE_DIRECTORIES:
                 raise ValueError(f"Unexpected archive member: {member.filename}")
             if _is_excluded(Path(*parts)):
                 raise ValueError(f"Excluded archive member: {member.filename}")
-
+            if parts == ("SKILL.md",):
+                skill_members.append(member.filename)
+    if len(skill_members) != 1:
+        raise ValueError(
+            f"Archive must contain exactly one root SKILL.md; found {len(skill_members)}"
+        )
 
 def _external_package(script: Path, staged_project: Path, destination: Path) -> None:
     with tempfile.TemporaryDirectory(prefix="skill-package-output-") as output_text:
@@ -212,6 +271,7 @@ def package(project_root: Path, destination: Path) -> Path:
             _deterministic_package(staged_project, destination)
         else:
             _external_package(external_script, staged_project, destination)
+        _validate_archive(destination, staged_project.name)
 
     os.chmod(destination, 0o600)
     return destination

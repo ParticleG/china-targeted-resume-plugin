@@ -1,0 +1,367 @@
+{
+  "$defs": {
+    "ApprovalBasis": {
+      "enum": [
+        "mechanical",
+        "independent_review",
+        "user_confirmed"
+      ],
+      "title": "ApprovalBasis",
+      "type": "string"
+    },
+    "ApprovedClaimIR": {
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "approval_basis": {
+                "const": "mechanical"
+              }
+            },
+            "required": [
+              "approval_basis"
+            ]
+          },
+          "then": {
+            "properties": {
+              "claim_mode": {
+                "const": "extractive"
+              },
+              "reviewer_decision_ids": {
+                "maxItems": 0,
+                "type": "array"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "approval_basis": {
+                "const": "independent_review"
+              }
+            },
+            "required": [
+              "approval_basis"
+            ]
+          },
+          "then": {
+            "properties": {
+              "claim_mode": {
+                "const": "reviewed-semantic"
+              },
+              "reviewer_decision_ids": {
+                "minItems": 1,
+                "type": "array"
+              }
+            },
+            "required": [
+              "claim_mode",
+              "reviewer_decision_ids"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "approval_basis": {
+                "const": "user_confirmed"
+              }
+            },
+            "required": [
+              "approval_basis"
+            ]
+          },
+          "then": {
+            "properties": {
+              "reviewer_decision_ids": {
+                "minItems": 1,
+                "type": "array"
+              }
+            },
+            "required": [
+              "reviewer_decision_ids"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "disclosure_decision": {
+                "const": "allowed"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "disclosure_audience": {
+                "$ref": "#/$defs/DisclosureAudience"
+              },
+              "disclosure_purpose": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "disclosure_audience",
+              "disclosure_purpose"
+            ]
+          },
+          "else": {
+            "properties": {
+              "disclosure_audience": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ],
+      "additionalProperties": false,
+      "description": "A claim whose final text is locked byte-for-byte to approved_safe_claim.",
+      "properties": {
+        "approval_basis": {
+          "$ref": "#/$defs/ApprovalBasis"
+        },
+        "approved_safe_claim": {
+          "minLength": 1,
+          "title": "Approved Safe Claim",
+          "type": "string"
+        },
+        "claim_id": {
+          "maxLength": 240,
+          "minLength": 1,
+          "title": "Claim Id",
+          "type": "string"
+        },
+        "claim_mode": {
+          "$ref": "#/$defs/ClaimMode",
+          "default": "extractive"
+        },
+        "contribution_qualifiers": {
+          "items": {
+            "$ref": "#/$defs/ContributionQualifier"
+          },
+          "title": "Contribution Qualifiers",
+          "type": "array"
+        },
+        "disclosure_audience": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DisclosureAudience"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "disclosure_decision": {
+          "$ref": "#/$defs/DisclosureDecision",
+          "default": "allowed"
+        },
+        "disclosure_purpose": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Disclosure Purpose"
+        },
+        "metric_qualifiers": {
+          "items": {
+            "$ref": "#/$defs/MetricQualifier"
+          },
+          "title": "Metric Qualifiers",
+          "type": "array"
+        },
+        "origin_evidence_ids": {
+          "items": {
+            "maxLength": 240,
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Origin Evidence Ids",
+          "type": "array"
+        },
+        "reviewer_decision_ids": {
+          "items": {
+            "maxLength": 240,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Reviewer Decision Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "claim_id",
+        "origin_evidence_ids",
+        "approved_safe_claim",
+        "approval_basis"
+      ],
+      "title": "ApprovedClaimIR",
+      "type": "object"
+    },
+    "ClaimMode": {
+      "enum": [
+        "extractive",
+        "reviewed-semantic"
+      ],
+      "title": "ClaimMode",
+      "type": "string"
+    },
+    "ContributionQualifier": {
+      "additionalProperties": false,
+      "properties": {
+        "actor": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Actor"
+        },
+        "scope": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Scope"
+        },
+        "text": {
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "text"
+      ],
+      "title": "ContributionQualifier",
+      "type": "object"
+    },
+    "DisclosureAudience": {
+      "enum": [
+        "recruiter",
+        "hiring_team",
+        "public",
+        "internal"
+      ],
+      "title": "DisclosureAudience",
+      "type": "string"
+    },
+    "DisclosureDecision": {
+      "enum": [
+        "allowed",
+        "denied",
+        "needs_confirmation"
+      ],
+      "title": "DisclosureDecision",
+      "type": "string"
+    },
+    "MetricQualifier": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Name"
+        },
+        "qualifier": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Qualifier"
+        },
+        "text": {
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        },
+        "unit": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unit"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Value"
+        }
+      },
+      "required": [
+        "text"
+      ],
+      "title": "MetricQualifier",
+      "type": "object"
+    }
+  },
+  "$id": "https://schemas.local/china-targeted-resume/approved-claims.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "claims": {
+      "items": {
+        "$ref": "#/$defs/ApprovedClaimIR"
+      },
+      "title": "Claims",
+      "type": "array"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    }
+  },
+  "title": "approved-claims",
+  "type": "object"
+}

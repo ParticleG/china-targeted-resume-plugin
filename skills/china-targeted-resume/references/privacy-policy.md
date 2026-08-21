@@ -10,9 +10,11 @@ Keep output and persistent metadata outside the source root. Canonicalize source
 
 ## Persistence allowlist
 
-Persistent navigation indexes may store only source-relative path/ID, source hash, title, heading/anchor, document domain, and internal links. They must never store section bodies, snippets, personal facts, contact details, derived claims, prompts, F6/P3 content, secrets, credentials, private URLs, or internal addresses.
+Persistent navigation indexes and Plugin-owned state, logs, telemetry, caches, and explicit session entries may store only source-relative path/ID, source hash, title, heading/anchor, document domain, internal links, stable IDs, and deterministic summaries. They must never store section bodies, snippets, contacts, credentials, secrets, derived private claims, F6/P3 content, private URLs, or internal addresses.
 
-Source bodies may exist only in process memory for the minimum necessary analysis. Filter F6, P3, secrets, credentials, customer/internal details, and prohibited content before any model context. Do not spill them to cache, log, trace, temporary prompt file, workspace, or error report. Dispose of bodies when the process exits.
+In standalone CLI and default Plugin metadata-only mode, source bodies exist only in process memory for the minimum deterministic read and never enter model context. Do not spill them to cache, log, trace, temporary prompt file, workspace, or error report.
+
+Reviewed-semantic mode is the sole narrow exception: after the per-run disclosure and explicit authorization defined in `SKILL.md`, one deterministically prefiltered minimum slice may enter the named model/task. OMP-owned task prompts and results may retain that authorized slice in private session JSONL. Record and report its location, observed permissions, exact scope, provider/locality, and retention/cleanup limits. Never claim it was deleted without verification. Contacts, credentials, secrets, and all F6/P3 content remain excluded from both modes.
 
 ## Output permission and audience
 
@@ -28,4 +30,4 @@ Errors and validation reports identify claim IDs, paths, checks, and reasons wit
 
 ## Final privacy checks
 
-Verify output location and modes; audience-compatible P level; absence of F4-F6/P3; no secrets or internal identifiers; appropriate contact fields; provenance without body duplication; metadata-only caches; and no retained temporary body copies.
+Verify output location and modes; audience-compatible P level; absence of F4-F6/P3; no secrets or internal identifiers; appropriate contact fields; provenance without body duplication; metadata-only Plugin-owned persistence; and no temporary body copies outside any explicitly authorized and audited OMP session JSONL. Report retained authorized slices and cleanup limitations rather than claiming zero persistence.

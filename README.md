@@ -2,10 +2,12 @@
 
 `china-targeted-resume` turns a read-only Markdown career knowledge base into an evidence-grounded resume for a target company and role. It analyzes job requirements, maps source-backed personal evidence, records gaps and constraints, audits visible claims, and renders a local ATS-friendly PDF.
 
-The repository is both:
+The repository provides two separately installed and supported surfaces:
 
-- a Python 3.14 command-line application; and
-- an installable OMP Skill whose orchestration instructions live in [`SKILL.md`](SKILL.md).
+- a standalone Python 3.14 command-line application; and
+- an OMP Plugin that bundles the Extension, commands, typed tools, agents, and the canonical Skill at [`skills/china-targeted-resume/SKILL.md`](skills/china-targeted-resume/SKILL.md).
+
+The final runtime decision is **Option A: Plugin-first hybrid**. TypeScript owns OMP integration and the deterministic boundaries covered by cross-language contracts; Python remains the standalone CLI and the explicit parser, composition/audit, Chromium-rendering, and PyMuPDF-inspection backend. Installing the Plugin does not install the Python CLI globally, and installing the Python package does not register the OMP Plugin. See the [final product boundary](docs/final-product-boundary.md) and [Phase 3 parity matrix](docs/parity-matrix.md).
 
 ## What it produces
 
@@ -61,13 +63,38 @@ Runs are not deleted automatically. Each invocation gets a UTC timestamped direc
 - Unverified, conflicting, private, stale, or unsupported claims are omitted or converted into confirmation questions.
 - A generated PDF is accepted only after deterministic content and PDF checks pass.
 
-## Requirements
+## Installation and prerequisites
 
-- Linux
-- Python 3.14 or newer
-- [`uv`](https://docs.astral.sh/uv/)
-- Playwright Chromium
-- Noto Sans CJK SC or Source Han Sans SC installed under `/usr/share/fonts`
+### OMP Plugin
+
+The Plugin compatibility floor is OMP `17.3.7`; it also requires Bun `1.3.0` or newer. A complete generation workflow additionally requires [`uv`](https://docs.astral.sh/uv/) and Python `3.14` or newer because the parser-backed validators, composition/audit, Chromium renderer, and PyMuPDF inspector remain explicit Python backends.
+
+For local development or an unpublished checkout, link the absolute project path:
+
+```bash
+omp plugin link /absolute/path/to/china-targeted-resume-plugin --force
+```
+
+After an authorized GitHub repository is published, install and update the same remote source with:
+
+```bash
+omp plugin install github:OWNER/REPOSITORY
+omp plugin install github:OWNER/REPOSITORY --force
+```
+
+Remote GitHub installation, recorded-source update, and fresh outside-project discovery are an external publication gate in this local repository; they are not reported as completed. A local link cannot stand in for that gate.
+
+Python-backed Plugin tools run the bundled checkout as `uv run --project PLUGIN_ROOT --offline --frozen china-targeted-resume …`. Provision the locked Python dependencies beforehand, and install Playwright Chromium plus a supported CJK font before rendering. Plugin installation registers OMP components only: it does **not** place `china-targeted-resume` on the global `PATH`, run `uv sync`, or install the browser/fonts. No global CLI installation is required when the project-local bridge command is usable.
+
+### Standalone Python CLI
+
+The CLI does not require OMP or the Plugin. It requires:
+
+- Linux;
+- Python 3.14 or newer;
+- [`uv`](https://docs.astral.sh/uv/);
+- Playwright Chromium; and
+- Noto Sans CJK SC or Source Han Sans SC installed under `/usr/share/fonts`.
 
 On Arch Linux, the font dependency is available as:
 
@@ -78,18 +105,18 @@ sudo pacman -S --needed noto-fonts-cjk
 Install project dependencies and Chromium:
 
 ```bash
-cd /path/to/china-targeted-resume
+cd /path/to/china-targeted-resume-plugin
 uv sync
 uv run playwright install chromium
 ```
 
-Confirm that the CLI is available:
+Confirm that the project-local CLI is available:
 
 ```bash
 uv run china-targeted-resume --help
 ```
 
-All examples below use `uv run china-targeted-resume`. If the package is installed globally, omit `uv run`.
+All CLI examples below use `uv run china-targeted-resume`. Omit `uv run` only when the Python package has been installed independently as a global command.
 
 ## Tutorial: prepare source and output paths
 
@@ -341,9 +368,15 @@ Templates:
 - `ats-simple`: conservative single-column ATS layout.
 - `human-readable`: the same semantic reading order with a more reader-oriented visual treatment.
 
-## Using the OMP Skill
+## Using the OMP Plugin and Skill
 
-The installed Skill lets an OMP session interpret natural-language requests and orchestrate the deterministic CLI. The Skill still requires explicit source and output boundaries.
+The installed Plugin lets an OMP session interpret natural-language requests through a **Plugin-first hybrid** backend. Start with `/resume-init`, then use `/resume-discover`, `/resume-analyze`, `/resume-generate`, `/resume-audit`, and `/resume-status` as appropriate. These commands are orchestration entry points, not replacements for policy validation.
+
+Every Plugin tool has one configured backend and fails explicitly if that backend is unavailable; there is no silent Python/TypeScript fallback. TypeScript handles the authorized source-slice reader and approved-claim lock, while the `markdown-it-py` source-map/role/evidence validators, composition and audit, Playwright Chromium rendering, and PyMuPDF inspection remain explicit Python-backed tools. The complete per-tool matrix is in [`docs/final-product-boundary.md`](docs/final-product-boundary.md).
+
+Every run starts in metadata-only mode: models receive structural metadata, IDs, hashes, spans, policy values, and deterministic summaries, not source bodies. If a material semantic decision needs an exact private slice, the Plugin must first disclose the selected provider and locality, the category and minimum proposed slices, the private OMP JSONL location and observed permissions, and the retention/cleanup limits. Reviewed-semantic access requires explicit authorization for that run. Contacts, credentials, and F6/P3 content remain forbidden.
+
+The Skill directs the main model to fan out the seven bundled agents with OMP's built-in `task` tool. Independent requirement, evidence, contribution, and privacy disagreements are hard gates; the resume advisor is a workflow watchdog and cannot approve claims. Parser-backed validation runs before the TypeScript approved-claim lock, and only exact locked claims may be composed, rendered, and inspected.
 
 Example prompt:
 
@@ -355,14 +388,26 @@ Also include the extended technical profile. Save all artifacts under
 /path/to/private-output and report every variant's content and PDF audit results.
 ```
 
-The Skill should resolve the target tier, run the CLI, ask only material confirmation questions, and report the timestamped run directory. It must not write generated resume text back to `personal-data/`.
+The Skill resolves the target tier, asks only material confirmation questions, and reports the timestamped run directory. It never writes generated resume text back to `personal-data/`. A Plugin or `.skill` installation alone does not install the Python CLI; the project-local kernel bridge prerequisites above must already be usable.
 
 ## Tests
 
-Run the complete deterministic test suite:
+Run the standalone Python and real-artifact suite:
 
 ```bash
 uv run pytest -q
+```
+
+Run the Plugin typecheck and complete Bun contract suite:
+
+```bash
+bun run check
+```
+
+For a focused Phase 3 schema, secure-I/O, and source-identity gate:
+
+```bash
+bun run test:kernel
 ```
 
 ## Build and package
@@ -379,10 +424,12 @@ Expected artifacts:
 ```text
 dist/china_targeted_resume-0.1.0.tar.gz
 dist/china_targeted_resume-0.1.0-py3-none-any.whl
-dist/china-targeted-resume.skill
+dist/china-targeted-resume-plugin.skill
 ```
 
-The curated `.skill` archive includes runtime code, schemas, references, templates, scripts, `SKILL.md`, and this README. It excludes tests, eval workspaces, caches, real source data, and generated resume outputs.
+The Git/source OMP Plugin package follows `package.json#files`: it includes the Extension, deterministic TypeScript kernel, agents, canonical Skill, schemas, assets, Python specialist backend, locked Python project metadata, and the final boundary/parity documentation. It does not include tests. The Python wheel contains the standalone runtime, rendering assets, and the five IR schemas needed by installed validation commands. The sdist contains the canonical Plugin-layout Skill and its references. The curated `.skill` archive consumes that same canonical source, stages one root `SKILL.md` plus `references/`, and includes Python runtime source, schemas, templates, scripts, and this README without recursive `.agents/skills` or `.claude/skills` links. It excludes tests, eval workspaces, caches, real source data, and generated resume outputs.
+
+These are different installation artifacts: neither installing the OMP Plugin nor unpacking the `.skill` archive performs a global Python CLI installation. The `.skill` archive is an orchestration bundle, not the OMP Extension package.
 
 ## Evaluation workspace
 
@@ -456,12 +503,14 @@ Open `resume-variants.json`, then read the failing variant's `<base>.validation.
 
 ## Further documentation
 
-- [`SKILL.md`](SKILL.md): OMP orchestration contract
-- [`references/source-adapter.md`](references/source-adapter.md): source discovery and isolation
-- [`references/role-resolution.md`](references/role-resolution.md): Tier A-D resolution
-- [`references/evidence-policy.md`](references/evidence-policy.md): fact and disclosure gates
-- [`references/role-dossier-contract.md`](references/role-dossier-contract.md): seven-file dossier boundaries
-- [`references/output-contract.md`](references/output-contract.md): artifact contract
-- [`references/resume-audit.md`](references/resume-audit.md): content and PDF acceptance
-- [`references/privacy-policy.md`](references/privacy-policy.md): privacy and retention rules
-- [`references/roadmap-handoff.md`](references/roadmap-handoff.md): explicit gap export
+- [`docs/final-product-boundary.md`](docs/final-product-boundary.md): Option A runtime decision, supported runtimes, installation/update gates, and per-tool backend ownership
+- [`docs/parity-matrix.md`](docs/parity-matrix.md): Phase 3 parity evidence, exact normalization policy, and final verification matrix
+- [`skills/china-targeted-resume/SKILL.md`](skills/china-targeted-resume/SKILL.md): canonical OMP orchestration contract
+- [`skills/china-targeted-resume/references/source-adapter.md`](skills/china-targeted-resume/references/source-adapter.md): source discovery and isolation
+- [`skills/china-targeted-resume/references/role-resolution.md`](skills/china-targeted-resume/references/role-resolution.md): Tier A-D resolution
+- [`skills/china-targeted-resume/references/evidence-policy.md`](skills/china-targeted-resume/references/evidence-policy.md): fact and disclosure gates
+- [`skills/china-targeted-resume/references/role-dossier-contract.md`](skills/china-targeted-resume/references/role-dossier-contract.md): seven-file dossier boundaries
+- [`skills/china-targeted-resume/references/output-contract.md`](skills/china-targeted-resume/references/output-contract.md): artifact contract
+- [`skills/china-targeted-resume/references/resume-audit.md`](skills/china-targeted-resume/references/resume-audit.md): content and PDF acceptance
+- [`skills/china-targeted-resume/references/privacy-policy.md`](skills/china-targeted-resume/references/privacy-policy.md): privacy and retention rules
+- [`skills/china-targeted-resume/references/roadmap-handoff.md`](skills/china-targeted-resume/references/roadmap-handoff.md): explicit gap export

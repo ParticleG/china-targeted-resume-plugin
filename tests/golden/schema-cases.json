@@ -1,0 +1,366 @@
+{
+  "fixture_version": 1,
+  "source": {
+    "path": "sources/record.md",
+    "source_hash": "sha256:addd9e85b3a41264842ae96705a2d6b8e15d52bd47749dec3d19c72efbd83fdd",
+    "span": {"start_line": 3, "end_line": 3, "start_byte": 12, "end_byte": 53},
+    "exact_quote": "- Built a queue worker for 样例服务.\n",
+    "heading_ancestry": ["Evidence"],
+    "section_id": "section.evidence",
+    "block_id": "block.queue",
+    "structural_flags": {
+      "block_kind": "list_item",
+      "inside_fence": false,
+      "inside_blockquote": false,
+      "inside_html": false,
+      "is_example": false,
+      "is_template": false,
+      "is_quoted": false,
+      "negative_instruction": false,
+      "secret_path": false,
+      "secret_content": false,
+      "malformed": false,
+      "effective_fact_policy": "F1",
+      "effective_disclosure_policy": "P0"
+    }
+  },
+  "cases": [
+    {
+      "case_id": "source-map-accepted",
+      "schema": "source-map",
+      "accepted": true,
+      "input": {
+        "schema_version": 1,
+        "documents": [{
+          "document_id": "doc.record",
+          "path": "sources/record.md",
+          "source_hash": "sha256:addd9e85b3a41264842ae96705a2d6b8e15d52bd47749dec3d19c72efbd83fdd",
+          "span": null,
+          "document_fact_policy": "F1",
+          "document_disclosure_policy": "P0",
+          "validation_warnings": []
+        }],
+        "sections": [{
+          "section_id": "section.evidence",
+          "document_id": "doc.record",
+          "span": {"start_line": 1, "end_line": 3, "start_byte": 0, "end_byte": 53},
+          "heading": "Evidence",
+          "heading_ancestry": [],
+          "duplicate_index": 0,
+          "block_ids": ["block.queue"],
+          "structural_flags": {
+            "block_kind": "section",
+            "inside_fence": false,
+            "inside_blockquote": false,
+            "inside_html": false,
+            "is_example": false,
+            "is_template": false,
+            "is_quoted": false,
+            "negative_instruction": false,
+            "secret_path": false,
+            "secret_content": false,
+            "malformed": false,
+            "effective_fact_policy": "F1",
+            "effective_disclosure_policy": "P0"
+          }
+        }],
+        "blocks": [{
+          "block_id": "block.queue",
+          "document_id": "doc.record",
+          "section_id": "section.evidence",
+          "span": {"start_line": 3, "end_line": 3, "start_byte": 12, "end_byte": 53},
+          "heading_ancestry": ["Evidence"],
+          "structural_flags": {
+            "block_kind": "list_item",
+            "inside_fence": false,
+            "inside_blockquote": false,
+            "inside_html": false,
+            "is_example": false,
+            "is_template": false,
+            "is_quoted": false,
+            "negative_instruction": false,
+            "secret_path": false,
+            "secret_content": false,
+            "malformed": false,
+            "effective_fact_policy": "F1",
+            "effective_disclosure_policy": "P0"
+          }
+        }],
+        "proposals": [{
+          "proposal_id": "proposal.queue",
+          "source": {
+            "path": "sources/record.md",
+            "source_hash": "sha256:addd9e85b3a41264842ae96705a2d6b8e15d52bd47749dec3d19c72efbd83fdd",
+            "span": {"start_line": 3, "end_line": 3, "start_byte": 12, "end_byte": 53},
+            "exact_quote": "- Built a queue worker for 样例服务.\n",
+            "structural_flags": {
+              "block_kind": "list_item",
+              "inside_fence": false,
+              "inside_blockquote": false,
+              "inside_html": false,
+              "is_example": false,
+              "is_template": false,
+              "is_quoted": false,
+              "negative_instruction": false,
+              "secret_path": false,
+              "secret_content": false,
+              "malformed": false,
+              "effective_fact_policy": "F1",
+              "effective_disclosure_policy": "P0"
+            },
+            "heading_ancestry": ["Evidence"],
+            "section_id": "section.evidence",
+            "block_id": "block.queue"
+          },
+          "domain": "personal",
+          "owner": "candidate",
+          "proposed_claim": "- Built a queue worker for 样例服务.\n",
+          "confidence": 1.0,
+          "reasoning": "Exact synthetic source slice.",
+          "claim_mode": "extractive",
+          "unresolved_questions": [],
+          "contribution_qualifiers": [],
+          "metric_qualifiers": []
+        }]
+      },
+      "expected": {
+        "normalized": "same-as-input",
+        "stable_ids": ["doc.record", "section.evidence", "block.queue", "proposal.queue"],
+        "source_hashes": ["sha256:addd9e85b3a41264842ae96705a2d6b8e15d52bd47749dec3d19c72efbd83fdd"],
+        "spans": [{"start_line": 3, "end_line": 3, "start_byte": 12, "end_byte": 53}]
+      }
+    },
+    {
+      "case_id": "source-map-rejected-unknown-field",
+      "schema": "source-map",
+      "accepted": false,
+      "rejection_reason": "additionalProperties",
+      "input": {"schema_version": 1, "documents": [], "sections": [], "blocks": [], "proposals": [], "unknown_field": true}
+    },
+    {
+      "case_id": "source-map-rejected-conditional-span",
+      "schema": "source-map",
+      "accepted": false,
+      "validation_layer": "schema",
+      "rejection_reason": "span-minimum",
+      "input": {"schema_version": 1, "documents": [{"document_id": "doc.bad", "path": "sources/record.md", "source_hash": "sha256:addd9e85b3a41264842ae96705a2d6b8e15d52bd47749dec3d19c72efbd83fdd", "span": {"start_line": 4, "end_line": 4, "start_byte": 53, "end_byte": 0}}], "sections": [], "blocks": []}
+    },
+    {
+      "case_id": "normalized-role-accepted",
+      "schema": "normalized-role-input",
+      "accepted": true,
+      "input": {
+        "schema_version": 1,
+        "input_id": "role-input.queue",
+        "domain": "role",
+        "role_id": "role.synthetic-platform",
+        "role_title": "Synthetic Platform Engineer",
+        "company_id": "company.sample",
+        "company_name": "Sample Systems",
+        "proposals": [{
+          "proposal_id": "role-proposal.queue",
+          "source": {
+            "path": "sources/record.md",
+            "source_hash": "sha256:addd9e85b3a41264842ae96705a2d6b8e15d52bd47749dec3d19c72efbd83fdd",
+            "span": {"start_line": 3, "end_line": 3, "start_byte": 12, "end_byte": 53},
+            "exact_quote": "- Built a queue worker for 样例服务.\n",
+            "structural_flags": {"block_kind": "list_item", "inside_fence": false, "inside_blockquote": false, "inside_html": false, "is_example": false, "is_template": false, "is_quoted": false, "negative_instruction": false, "secret_path": false, "secret_content": false, "malformed": false, "effective_fact_policy": "F1", "effective_disclosure_policy": "P0"},
+            "heading_ancestry": ["Evidence"],
+            "section_id": "section.evidence",
+            "block_id": "block.queue"
+          },
+          "domain": "role",
+          "owner": "role",
+          "proposed_claim": "- Built a queue worker for 样例服务.\n",
+          "confidence": 0.9,
+          "reasoning": "Matches the synthetic role brief.",
+          "claim_mode": "extractive",
+          "unresolved_questions": [],
+          "contribution_qualifiers": [],
+          "metric_qualifiers": []
+        }],
+        "requirements": [{
+          "requirement_id": "requirement.queue",
+          "text": "Queue worker implementation",
+          "origin": "explicit",
+          "source": {
+            "path": "sources/record.md",
+            "source_hash": "sha256:addd9e85b3a41264842ae96705a2d6b8e15d52bd47749dec3d19c72efbd83fdd",
+            "span": {"start_line": 3, "end_line": 3, "start_byte": 12, "end_byte": 53},
+            "exact_quote": "- Built a queue worker for 样例服务.\n",
+            "structural_flags": {"block_kind": "list_item", "inside_fence": false, "inside_blockquote": false, "inside_html": false, "is_example": false, "is_template": false, "is_quoted": false, "negative_instruction": false, "secret_path": false, "secret_content": false, "malformed": false, "effective_fact_policy": "F1", "effective_disclosure_policy": "P0"},
+            "heading_ancestry": ["Evidence"],
+            "section_id": "section.evidence",
+            "block_id": "block.queue"
+          },
+          "confidence": 0.8,
+          "reasoning": "Explicit synthetic requirement."
+        }],
+        "unresolved_questions": []
+      },
+      "expected": {"normalized": "same-as-input", "stable_ids": ["role-input.queue", "role-proposal.queue", "requirement.queue"], "source_hashes": ["sha256:addd9e85b3a41264842ae96705a2d6b8e15d52bd47749dec3d19c72efbd83fdd"]}
+    },
+    {
+      "case_id": "normalized-role-rejected-unknown-field",
+      "schema": "normalized-role-input",
+      "accepted": false,
+      "validation_layer": "schema",
+      "input": {"schema_version": 1, "input_id": "role-bad", "unexpected": "reject"}
+    },
+    {
+      "case_id": "normalized-role-rejected-explicit-without-source",
+      "schema": "normalized-role-input",
+      "accepted": false,
+      "validation_layer": "schema",
+      "input": {"schema_version": 1, "input_id": "role-bad-source", "requirements": [{"requirement_id": "requirement.missing-source", "text": "Synthetic requirement", "origin": "explicit", "confidence": 0.5, "reasoning": "No source is intentionally invalid."}]}
+    },
+    {
+      "case_id": "normalized-evidence-accepted",
+      "schema": "normalized-evidence-input",
+      "accepted": true,
+      "input": {
+        "schema_version": 1,
+        "input_id": "evidence-input.queue",
+        "domain": "evidence",
+        "candidates": [{
+          "evidence_id": "evidence.queue",
+          "proposal_id": "proposal.queue",
+          "source": {
+            "path": "sources/record.md",
+            "source_hash": "sha256:addd9e85b3a41264842ae96705a2d6b8e15d52bd47749dec3d19c72efbd83fdd",
+            "span": {"start_line": 3, "end_line": 3, "start_byte": 12, "end_byte": 53},
+            "exact_quote": "- Built a queue worker for 样例服务.\n",
+            "structural_flags": {"block_kind": "list_item", "inside_fence": false, "inside_blockquote": false, "inside_html": false, "is_example": false, "is_template": false, "is_quoted": false, "negative_instruction": false, "secret_path": false, "secret_content": false, "malformed": false, "effective_fact_policy": "F1", "effective_disclosure_policy": "P0"},
+            "heading_ancestry": ["Evidence"],
+            "section_id": "section.evidence",
+            "block_id": "block.queue"
+          },
+          "proposed_claim": "- Built a queue worker for 样例服务.\n",
+          "domain": "evidence",
+          "owner": "candidate",
+          "confidence": 1.0,
+          "reasoning": "Exact source-backed evidence.",
+          "claim_mode": "extractive",
+          "requirement_ids": ["requirement.queue"],
+          "contribution_qualifiers": [],
+          "metric_qualifiers": [],
+          "unresolved_questions": []
+        }],
+        "unresolved_questions": []
+      },
+      "expected": {"normalized": "same-as-input", "stable_ids": ["evidence-input.queue", "evidence.queue", "proposal.queue"], "source_hashes": ["sha256:addd9e85b3a41264842ae96705a2d6b8e15d52bd47749dec3d19c72efbd83fdd"]}
+    },
+    {
+      "case_id": "normalized-evidence-rejected-unknown-field",
+      "schema": "normalized-evidence-input",
+      "accepted": false,
+      "validation_layer": "schema",
+      "input": {"schema_version": 1, "input_id": "evidence-bad", "candidates": [], "unknown_field": "reject"}
+    },
+    {
+      "case_id": "normalized-evidence-rejected-duplicate-id",
+      "schema": "normalized-evidence-input",
+      "accepted": false,
+      "validation_layer": "canonical",
+      "input": {"schema_version": 1, "input_id": "evidence-duplicate", "candidates": [{"evidence_id": "same", "source": {"path": "sources/record.md", "source_hash": "sha256:addd9e85b3a41264842ae96705a2d6b8e15d52bd47749dec3d19c72efbd83fdd", "span": {"start_line": 3, "end_line": 3, "start_byte": 12, "end_byte": 53}, "exact_quote": "- Built a queue worker for 样例服务.\n", "structural_flags": {"effective_fact_policy": "F1", "effective_disclosure_policy": "P0"}}, "proposed_claim": "claim", "confidence": 0.5, "reasoning": "duplicate one"}, {"evidence_id": "same", "source": {"path": "sources/record.md", "source_hash": "sha256:addd9e85b3a41264842ae96705a2d6b8e15d52bd47749dec3d19c72efbd83fdd", "span": {"start_line": 4, "end_line": 4, "start_byte": 53, "end_byte": 105}, "exact_quote": "- Reduced p95 latency by 20% in a test environment.\n", "structural_flags": {"effective_fact_policy": "F1", "effective_disclosure_policy": "P0"}}, "proposed_claim": "claim two", "confidence": 0.5, "reasoning": "duplicate two"}]}
+    },
+    {
+      "case_id": "review-decision-accepted",
+      "schema": "review-decision",
+      "accepted": true,
+      "input": {
+        "schema_version": 1,
+        "decisions": [{
+          "review_id": "review.evidence.queue",
+          "evidence_id": "evidence.queue",
+          "reviewer_id": "reviewer.synthetic",
+          "review_kind": "evidence",
+          "outcome": "approve",
+          "reasoning": "Exact quote and source identity match.",
+          "approved_safe_claim": "- Built a queue worker for 样例服务.\n",
+          "contribution_qualifiers": [],
+          "metric_qualifiers": [],
+          "disclosure_decision": null,
+          "disclosure_audience": null,
+          "disclosure_purpose": null,
+          "user_confirmation_required": false,
+          "user_confirmed": false,
+          "questions": []
+        }]
+      },
+      "expected": {"normalized": "same-as-input", "stable_ids": ["review.evidence.queue", "evidence.queue", "reviewer.synthetic"]}
+    },
+    {
+      "case_id": "review-decision-rejected-unknown-field",
+      "schema": "review-decision",
+      "accepted": false,
+      "validation_layer": "schema",
+      "input": {"schema_version": 1, "decisions": [], "unknown_field": true}
+    },
+    {
+      "case_id": "review-decision-rejected-privacy-conditional",
+      "schema": "review-decision",
+      "accepted": false,
+      "validation_layer": "schema",
+      "input": {"schema_version": 1, "decisions": [{"review_id": "review.privacy.bad", "evidence_id": "evidence.queue", "reviewer_id": "reviewer.synthetic", "review_kind": "privacy", "outcome": "approve", "reasoning": "Missing required audience and purpose.", "disclosure_decision": "allowed", "user_confirmation_required": false, "user_confirmed": false}]}
+    },
+    {
+      "case_id": "approved-claims-extractive-accepted",
+      "schema": "approved-claims",
+      "accepted": true,
+      "input": {
+        "schema_version": 1,
+        "claims": [{
+          "claim_id": "claim.queue.extractive",
+          "origin_evidence_ids": ["evidence.queue"],
+          "approved_safe_claim": "- Built a queue worker for 样例服务.\n",
+          "approval_basis": "mechanical",
+          "reviewer_decision_ids": [],
+          "claim_mode": "extractive",
+          "contribution_qualifiers": [],
+          "metric_qualifiers": [],
+          "disclosure_decision": "allowed",
+          "disclosure_audience": "recruiter",
+          "disclosure_purpose": "synthetic screening"
+        }]
+      },
+      "expected": {"normalized": {"schema_version": 1, "claims": [{"claim_id": "claim.queue.extractive", "origin_evidence_ids": ["evidence.queue"], "approved_safe_claim": "- Built a queue worker for 样例服务.\n", "approval_basis": "mechanical", "reviewer_decision_ids": [], "claim_mode": "extractive", "contribution_qualifiers": [], "metric_qualifiers": [], "disclosure_decision": "allowed", "disclosure_audience": "recruiter", "disclosure_purpose": "synthetic screening"}]}, "stable_ids": ["claim.queue.extractive", "evidence.queue"]}
+    },
+    {
+      "case_id": "approved-claims-reviewed-accepted",
+      "schema": "approved-claims",
+      "accepted": true,
+      "input": {
+        "schema_version": 1,
+        "claims": [{
+          "claim_id": "claim.queue.reviewed",
+          "origin_evidence_ids": ["evidence.queue"],
+          "approved_safe_claim": "Built and operated a queue worker for 样例服务.",
+          "approval_basis": "independent_review",
+          "reviewer_decision_ids": ["review.evidence.queue"],
+          "claim_mode": "reviewed-semantic",
+          "contribution_qualifiers": [{"text": "Synthetic team pilot", "scope": "queue worker", "actor": "team"}],
+          "metric_qualifiers": [],
+          "disclosure_decision": "allowed",
+          "disclosure_audience": "hiring_team",
+          "disclosure_purpose": "synthetic technical review"
+        }]
+      },
+      "expected": {"normalized": "same-as-input-without-immutable", "stable_ids": ["claim.queue.reviewed", "evidence.queue", "review.evidence.queue"]}
+    },
+    {
+      "case_id": "approved-claims-rejected-unknown-field",
+      "schema": "approved-claims",
+      "accepted": false,
+      "validation_layer": "schema",
+      "input": {"schema_version": 1, "claims": [], "unknown_field": "reject"}
+    },
+    {
+      "case_id": "approved-claims-rejected-conditional-basis",
+      "schema": "approved-claims",
+      "accepted": false,
+      "validation_layer": "schema",
+      "input": {"schema_version": 1, "claims": [{"claim_id": "claim.bad-basis", "origin_evidence_ids": ["evidence.queue"], "approved_safe_claim": "A semantic rewrite", "approval_basis": "mechanical", "claim_mode": "reviewed-semantic", "disclosure_decision": "allowed", "disclosure_audience": "recruiter", "disclosure_purpose": "synthetic screening"}]}
+    }
+  ]
+}

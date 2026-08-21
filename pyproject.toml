@@ -31,14 +31,18 @@ packages = ["src/china_targeted_resume"]
 
 [tool.hatch.build.targets.wheel.force-include]
 assets = "assets"
+"schemas/approved-claims.schema.json" = "china_targeted_resume/schemas/approved-claims.schema.json"
+"schemas/normalized-evidence-input.schema.json" = "china_targeted_resume/schemas/normalized-evidence-input.schema.json"
+"schemas/normalized-role-input.schema.json" = "china_targeted_resume/schemas/normalized-role-input.schema.json"
+"schemas/review-decision.schema.json" = "china_targeted_resume/schemas/review-decision.schema.json"
+"schemas/source-map.schema.json" = "china_targeted_resume/schemas/source-map.schema.json"
 
 [tool.hatch.build.targets.sdist]
 include = [
-  "/SKILL.md",
+  "/skills/china-targeted-resume",
   "/README.md",
   "/assets",
   "/pyproject.toml",
-  "/references",
   "/schemas",
   "/scripts",
   "/src",

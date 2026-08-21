@@ -1,0 +1,370 @@
+{
+  "fixture_version": 1,
+  "description": "Language-neutral synthetic contracts for Phase 3 hybrid parity.",
+  "source_fixtures": {
+    "record": "sources/record.md",
+    "domains": ["sample.invalid", "jobs.sample.invalid"],
+    "personal_data": false,
+    "live_network": false,
+    "sha256": "sha256:addd9e85b3a41264842ae96705a2d6b8e15d52bd47749dec3d19c72efbd83fdd",
+    "utf8_spans": [
+      {"id": "queue", "start_line": 3, "end_line": 3, "start_byte": 12, "end_byte": 53, "quote": "- Built a queue worker for 样例服务.\n"},
+      {"id": "metric", "start_line": 4, "end_line": 4, "start_byte": 53, "end_byte": 105, "quote": "- Reduced p95 latency by 20% in a test environment.\n"},
+      {"id": "private", "start_line": 14, "end_line": 14, "start_byte": 200, "end_byte": 252, "quote": "- Secret content must never become evidence. F6 P3.\n"},
+      {"id": "targeted", "start_line": 18, "end_line": 18, "start_byte": 275, "end_byte": 334, "quote": "- A named application detail is P2 and needs confirmation.\n"}
+    ]
+  },
+  "nondeterministic_fields": [
+    "run.started_at",
+    "run.finished_at",
+    "run.directory_suffix",
+    "artifact.generated_at"
+  ],
+  "schema_cases": "schema-cases.json",
+  "schema_normalized": "schema-normalized.json",
+  "approval_cases_executable": "approval-cases.json",
+  "kernel_cases_executable": "kernel-cases.json",
+  "normalization": {
+    "canonical_key_order": "lexicographic-object-keys",
+    "array_order": "preserve-contract-order",
+    "omit_defaults": false,
+    "omit_fields": [],
+    "stable_id_inputs": ["document_id", "section_id", "block_id", "proposal_id", "requirement_id", "evidence_id", "review_id", "claim_id"]
+  },
+  "policy_cases": [
+    {
+      "case_id": "explicit-public",
+      "source": "queue",
+      "document_fact_policy": "F1",
+      "document_disclosure_policy": "P0",
+      "local_fact_policy": "F1",
+      "local_disclosure_policy": "P0",
+      "effective_fact_policy": "F1",
+      "effective_disclosure_policy": "P0",
+      "blocked": false,
+      "decision": "allowed"
+    },
+    {
+      "case_id": "inherited-f6-p3",
+      "source": "private",
+      "document_fact_policy": "F1",
+      "document_disclosure_policy": "P0",
+      "ancestor_fact_policy": "F6",
+      "ancestor_disclosure_policy": "P3",
+      "local_fact_policy": null,
+      "local_disclosure_policy": null,
+      "effective_fact_policy": "F6",
+      "effective_disclosure_policy": "P3",
+      "blocked": true,
+      "decision": "denied",
+      "blocking_reasons": ["fact_policy:F6", "disclosure_policy:P3"]
+    },
+    {
+      "case_id": "p2-without-confirmation",
+      "source": "targeted",
+      "document_fact_policy": "F2",
+      "document_disclosure_policy": "P2",
+      "local_fact_policy": "F2",
+      "local_disclosure_policy": "P2",
+      "effective_fact_policy": "F2",
+      "effective_disclosure_policy": "P2",
+      "blocked": true,
+      "decision": "needs_confirmation",
+      "user_confirmation_required": true,
+      "blocking_reasons": ["p2_permission_unknown"]
+    },
+    {
+      "case_id": "fenced-example",
+      "source": "queue",
+      "structural_flags": {"inside_fence": true, "is_example": true},
+      "effective_fact_policy": "F1",
+      "effective_disclosure_policy": "P0",
+      "blocked": true,
+      "decision": "denied",
+      "blocking_reasons": ["inside_fence", "is_example"]
+    }
+  ],
+  "approval_cases": [
+    {
+      "case_id": "extractive-mechanical",
+      "input_claim_id": "claim.queue.extractive",
+      "claim_mode": "extractive",
+      "approval_basis": "mechanical",
+      "reviewer_decision_ids": [],
+      "approved_safe_claim": "- Built a queue worker for 样例服务.\n",
+      "final_claim": "- Built a queue worker for 样例服务.\n",
+      "locked": true,
+      "mutated_final_claim": "Built a queue worker for 样例服务.",
+      "mutation_rejected": true
+    },
+    {
+      "case_id": "reviewed-semantic-independent",
+      "input_claim_id": "claim.queue.reviewed",
+      "claim_mode": "reviewed-semantic",
+      "approval_basis": "independent_review",
+      "reviewer_decision_ids": ["review.evidence.queue"],
+      "approved_safe_claim": "Built and operated a queue worker for 样例服务.",
+      "final_claim": "Built and operated a queue worker for 样例服务.",
+      "locked": true,
+      "mutated_final_claim": "Built and owned a queue worker for 样例服务.",
+      "mutation_rejected": true
+    },
+    {
+      "case_id": "user-confirmed-p2",
+      "input_claim_id": "claim.targeted.reviewed",
+      "claim_mode": "reviewed-semantic",
+      "approval_basis": "user_confirmed",
+      "reviewer_decision_ids": ["review.targeted.confirmed"],
+      "approved_safe_claim": "Led a named synthetic application migration discussion.",
+      "final_claim": "Led a named synthetic application migration discussion.",
+      "locked": true,
+      "requires_confirmation": true
+    }
+  ],
+  "provenance_cases": [
+    {
+      "case_id": "closed-provenance",
+      "claim_id": "claim.queue.extractive",
+      "evidence_ids": ["evidence.queue"],
+      "source_paths": ["sources/record.md"],
+      "review_ids": [],
+      "expected": {"closed": true, "missing": []}
+    },
+    {
+      "case_id": "reviewed-closed-provenance",
+      "claim_id": "claim.queue.reviewed",
+      "evidence_ids": ["evidence.queue"],
+      "source_paths": ["sources/record.md"],
+      "review_ids": ["review.evidence.queue"],
+      "expected": {"closed": true, "missing": []}
+    },
+    {
+      "case_id": "missing-origin-rejected",
+      "claim_id": "claim.missing-origin",
+      "evidence_ids": ["evidence.missing"],
+      "source_paths": [],
+      "review_ids": [],
+      "expected": {"closed": false, "missing": ["evidence.missing"]}
+    }
+  ],
+  "variants": {
+    "all": {
+      "schema_version": 1,
+      "variants": [
+        {
+          "variant": "recruiter-one-page",
+          "base_name": "resume-recruiter-1p",
+          "target_pages": 1,
+          "actual_pages": 1,
+          "underfilled": true,
+          "visible_claims": 5,
+          "audit_success": true,
+          "pdf_success": true,
+          "artifacts": {
+            "document": "resume-recruiter-1p.document.json",
+            "provenance": "resume-recruiter-1p.provenance.json",
+            "validation": "resume-recruiter-1p.validation.json",
+            "audit": "resume-recruiter-1p.audit.md",
+            "markdown": "resume-recruiter-1p.md",
+            "ats_text": "resume-recruiter-1p.txt",
+            "html": "resume-recruiter-1p.html",
+            "pdf": "resume-recruiter-1p.pdf"
+          },
+          "previews": ["resume-recruiter-1p.preview.png"]
+        },
+        {
+          "variant": "technical-two-page",
+          "base_name": "resume-technical-2p",
+          "target_pages": 2,
+          "actual_pages": 2,
+          "underfilled": true,
+          "visible_claims": 11,
+          "audit_success": true,
+          "pdf_success": true,
+          "artifacts": {
+            "document": "resume-technical-2p.document.json",
+            "provenance": "resume-technical-2p.provenance.json",
+            "validation": "resume-technical-2p.validation.json",
+            "audit": "resume-technical-2p.audit.md",
+            "markdown": "resume-technical-2p.md",
+            "ats_text": "resume-technical-2p.txt",
+            "html": "resume-technical-2p.html",
+            "pdf": "resume-technical-2p.pdf"
+          },
+          "previews": ["resume-technical-2p.preview.png", "resume-technical-2p.preview-2.png"]
+        },
+        {
+          "variant": "extended-three-page",
+          "base_name": "technical-profile-3p",
+          "target_pages": 3,
+          "actual_pages": 3,
+          "underfilled": true,
+          "visible_claims": 17,
+          "audit_success": true,
+          "pdf_success": true,
+          "artifacts": {
+            "document": "technical-profile-3p.document.json",
+            "provenance": "technical-profile-3p.provenance.json",
+            "validation": "technical-profile-3p.validation.json",
+            "audit": "technical-profile-3p.audit.md",
+            "markdown": "technical-profile-3p.md",
+            "ats_text": "technical-profile-3p.txt",
+            "html": "technical-profile-3p.html",
+            "pdf": "technical-profile-3p.pdf"
+          },
+          "previews": ["technical-profile-3p.preview.png", "technical-profile-3p.preview-2.png", "technical-profile-3p.preview-3.png"]
+        }
+      ]
+    },
+    "partial-failure": {
+      "manifest": {
+      "schema_version": 1,
+      "variants": [
+        {
+          "variant": "recruiter-one-page",
+          "base_name": "resume-recruiter-1p",
+          "target_pages": 1,
+          "actual_pages": 1,
+          "underfilled": true,
+          "visible_claims": 5,
+          "audit_success": true,
+          "pdf_success": true,
+          "artifacts": {
+            "document": "resume-recruiter-1p.document.json",
+            "provenance": "resume-recruiter-1p.provenance.json",
+            "validation": "resume-recruiter-1p.validation.json",
+            "audit": "resume-recruiter-1p.audit.md",
+            "markdown": "resume-recruiter-1p.md",
+            "ats_text": "resume-recruiter-1p.txt",
+            "html": "resume-recruiter-1p.html",
+            "pdf": "resume-recruiter-1p.pdf"
+          },
+          "previews": ["resume-recruiter-1p.preview.png"]
+        },
+        {
+          "variant": "technical-two-page",
+          "base_name": "resume-technical-2p",
+          "target_pages": 2,
+          "actual_pages": 4,
+          "underfilled": false,
+          "visible_claims": 12,
+          "audit_success": false,
+          "pdf_success": false,
+          "artifacts": {
+            "document": "resume-technical-2p.document.json",
+            "provenance": "resume-technical-2p.provenance.json",
+            "validation": "resume-technical-2p.validation.json",
+            "audit": "resume-technical-2p.audit.md",
+            "markdown": "resume-technical-2p.md",
+            "ats_text": "resume-technical-2p.txt",
+            "html": "resume-technical-2p.html",
+            "pdf": "resume-technical-2p.pdf"
+          },
+          "previews": [
+            "resume-technical-2p.preview.png",
+            "resume-technical-2p.preview-2.png",
+            "resume-technical-2p.preview-3.png",
+            "resume-technical-2p.preview-4.png"
+          ]
+        }
+      ]
+      },
+      "expected": {"complete": false, "false_completion": false, "failed_variants": ["technical-two-page"]}
+    }
+  },
+  "audit_cases": [
+    {
+      "case_id": "clean-semantic-audit",
+      "category": "ats",
+      "errors": [],
+      "warnings": ["[WARNING][ats.keyword_coverage] Review natural coverage for high-priority keywords: queue"],
+      "checks": {"single_column_model": true, "canonical_section_order": true, "no_image_only_text": true, "no_placeholders": true},
+      "success": true
+    },
+    {
+      "case_id": "unsupported-and-placeholder",
+      "category": "ats",
+      "errors": ["[ERROR][ats.placeholder] Remove every unresolved placeholder before rendering.", "[ERROR][ats.unsupported_skill] Remove or evidence skill \"Unlisted Skill\" in skill group 1."],
+      "warnings": [],
+      "checks": {"single_column_model": true, "canonical_section_order": true, "no_image_only_text": true, "no_placeholders": false},
+      "success": false
+    },
+    {
+      "case_id": "provenance-gap",
+      "category": "provenance",
+      "errors": ["[ERROR][provenance.missing] Visible claim claim.missing-origin has no closed provenance."],
+      "warnings": [],
+      "checks": {"all_visible_claims_provenance_closed": false},
+      "success": false
+    }
+  ],
+  "html_cases": [
+    {
+      "case_id": "semantic-one-column-order",
+      "expected_selectors": ["header", "main", "section#summary", "section#skills", "section#experience", "section#projects", "section#education", "section#honors", "footer"],
+      "expected_text_order": ["Synthetic Candidate", "Platform Engineer", "Summary", "Skills", "Experience", "Projects", "Education", "Honors"],
+      "expected_links": [{"text": "Synthetic Portfolio", "href": "https://sample.invalid/portfolio"}],
+      "forbidden_text": ["sources/record.md", "F6", "P3", "TOKEN-FICTIONAL"]
+    },
+    {
+      "case_id": "html-order-regression",
+      "actual_text_order": ["Synthetic Candidate", "Experience", "Summary", "Skills"],
+      "expected": {"semantic_order": false, "finding": "canonical_section_order"}
+    }
+  ],
+  "pdf_cases": [
+    {
+      "case_id": "pdf-clean",
+      "expected_pages": 1,
+      "expected_text_contains": ["Synthetic Candidate", "Built a queue worker for 样例服务."],
+      "expected_text_not_contains": ["sources/record.md", "F6", "P3"],
+      "expected_links": ["https://sample.invalid/portfolio"],
+      "blank_pages": [],
+      "overflow": false,
+      "success": true
+    },
+    {
+      "case_id": "pdf-overflow-and-blank",
+      "expected_pages": 2,
+      "expected_text_contains": ["Synthetic Candidate"],
+      "expected_text_not_contains": [],
+      "expected_links": [],
+      "blank_pages": [2],
+      "overflow": true,
+      "success": false
+    }
+  ],
+  "io_cases": [
+    {"case_id": "private-modes", "directory_mode": "0700", "file_mode": "0600", "source_unchanged": true},
+    {"case_id": "symlink-rejected", "source_link": "sources/link.md", "target": "outside.md", "accepted": false, "reason": "symlink"},
+    {"case_id": "atomic-non-overwrite", "existing_artifact": "resume-recruiter-1p.pdf", "accepted": false, "reason": "non-overwrite", "existing_bytes_preserved": true},
+    {"case_id": "normalized-run-suffix", "run_names": ["run-20260821T120000Z-0001", "run-20260821T120000Z-0002"], "normalized": "run-<timestamp>-<suffix>", "collision_free": true}
+  ],
+  "verification_matrix": [
+    {"case_id": "known-adapter", "input": "markdown-career-v1", "expected_backend": "python", "expected": "accepted"},
+    {"case_id": "heterogeneous-agent-assisted", "input": "heterogeneous-source", "expected_backend": "python", "expected": "accepted-with-confirmations"},
+    {"case_id": "extractive-claims", "input": "claim.queue.extractive", "expected_backend": "typescript", "expected": "locked"},
+    {"case_id": "reviewed-semantic", "input": "claim.queue.reviewed", "expected_backend": "typescript", "expected": "reviewer-required"},
+    {"case_id": "unsupported-claim", "input": "claim.bad-basis", "expected_backend": "typescript", "expected": "rejected"},
+    {"case_id": "inherited-f6-p3", "input": "private", "expected_backend": "typescript", "expected": "denied"},
+    {"case_id": "fenced-example", "input": "fenced-example", "expected_backend": "python", "expected": "denied"},
+    {"case_id": "p2-confirmation", "input": "user-confirmed-p2", "expected_backend": "typescript", "expected": "confirmation-required"},
+    {"case_id": "stale-conflicting-jd", "input": "jd.stale.conflicting", "expected_backend": "python", "expected": "refresh-required"},
+    {"case_id": "all-variants", "input": "variants.all", "expected_backend": "typescript+python", "expected": "three-manifest-records"},
+    {"case_id": "partial-manifest-failure", "input": "variants.partial-failure", "expected_backend": "typescript+python", "expected": "incomplete-with-failure"}
+  ],
+  "backend_matrix": {
+    "schema-validation": "typescript",
+    "normalization": "typescript",
+    "secure-io": "typescript",
+    "source-map-parser": "python",
+    "role-input-validation": "python",
+    "evidence-input-validation": "python",
+    "policy-approval-provenance": "typescript",
+    "composition": "python",
+    "html-render": "python",
+    "pdf-render": "python",
+    "pdf-inspection": "python-pymupdf",
+    "semantic-audit": "python"
+  }
+}

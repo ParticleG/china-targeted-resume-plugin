@@ -8,6 +8,9 @@ htmlcov/
 .mypy_cache/
 .ruff_cache/
 
+# Bun/Node dependencies
+node_modules/
+
 # Local secrets, editor state, and OS metadata
 .env
 .env.*

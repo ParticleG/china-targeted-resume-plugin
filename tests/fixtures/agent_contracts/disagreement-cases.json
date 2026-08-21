@@ -1,0 +1,431 @@
+{
+  "fixture_version": 1,
+  "authorization_receipts": [
+    {
+      "ok": true,
+      "authorizationId": "authorization:synthetic:1",
+      "provider": "synthetic-provider",
+      "model": "synthetic-model",
+      "locality": "remote",
+      "requestId": "slice-request:synthetic:1:evidence",
+      "mode": "reviewed-semantic",
+      "consumer": "evidence-reviewer",
+      "purpose": "review one claim for source support",
+      "path": "/synthetic/evidence-1.md",
+      "startLine": 10,
+      "endLine": 12,
+      "category": "evidence",
+      "bytes": 96
+    },
+    {
+      "ok": true,
+      "authorizationId": "authorization:synthetic:4",
+      "provider": "synthetic-provider",
+      "model": "synthetic-model",
+      "locality": "local",
+      "mode": "reviewed-semantic",
+      "consumer": "contribution-reviewer",
+      "purpose": "review one claim for contribution and metric scope",
+      "path": "/synthetic/evidence-4.md",
+      "startLine": 20,
+      "endLine": 23,
+      "category": "evidence",
+      "bytes": 128
+    },
+    {
+      "ok": true,
+      "authorizationId": "authorization:synthetic:5",
+      "provider": "synthetic-provider",
+      "model": "synthetic-model",
+      "locality": "local",
+      "requestId": "slice-request:synthetic:5:requirement",
+      "mode": "reviewed-semantic",
+      "consumer": "requirement-reviewer",
+      "purpose": "review one explicit role requirement",
+      "path": "/synthetic/role-5.md",
+      "startLine": 5,
+      "endLine": 7,
+      "category": "requirement",
+      "bytes": 80
+    },
+    {
+      "ok": true,
+      "authorizationId": "authorization:synthetic:5",
+      "provider": "synthetic-provider",
+      "model": "synthetic-model",
+      "locality": "local",
+      "requestId": "slice-request:synthetic:5:evidence",
+      "mode": "reviewed-semantic",
+      "consumer": "evidence-reviewer",
+      "purpose": "review one claim for source support",
+      "path": "/synthetic/evidence-5.md",
+      "startLine": 30,
+      "endLine": 32,
+      "category": "evidence",
+      "bytes": 104
+    },
+    {
+      "ok": true,
+      "authorizationId": "authorization:synthetic:5",
+      "provider": "synthetic-provider",
+      "model": "synthetic-model",
+      "locality": "local",
+      "requestId": "slice-request:synthetic:5:contribution",
+      "mode": "reviewed-semantic",
+      "consumer": "contribution-reviewer",
+      "purpose": "review one claim for contribution and metric scope",
+      "path": "/synthetic/evidence-5.md",
+      "startLine": 30,
+      "endLine": 32,
+      "category": "evidence",
+      "bytes": 104
+    }
+  ],
+  "cases": [
+    {
+      "case_id": "unsupported-evidence",
+      "description": "An independent evidence reviewer finds a material claim element unsupported.",
+      "agent_outputs": [
+        {
+          "contract_version": 1,
+          "agent_role": "evidence-reviewer",
+          "mode": "reviewed_semantic",
+          "authorization_id": "authorization:synthetic:1",
+          "decision": {
+            "review_id": "decision:unsupported-evidence",
+            "evidence_id": "evidence:synthetic:1",
+            "reviewer_id": "reviewer:evidence:a",
+            "review_kind": "evidence",
+            "outcome": "reject",
+            "reasoning": "The production-deployment element has no supporting source reference.",
+            "approved_safe_claim": null,
+            "contribution_qualifiers": [],
+            "metric_qualifiers": [],
+            "disclosure_decision": null,
+            "disclosure_audience": null,
+            "disclosure_purpose": null,
+            "user_confirmation_required": false,
+            "user_confirmed": false,
+            "questions": []
+          },
+          "claim_id": "claim:synthetic:1",
+          "requirement_ids": ["requirement:synthetic:1"],
+          "support_finding": "unsupported",
+          "uncertainty_finding": "preserved",
+          "source_reference_ids": ["source-ref:synthetic:1"],
+          "unsupported_elements": ["production-deployment element"],
+          "blocking_reasons": ["unsupported_evidence"]
+        }
+      ],
+      "expected": {
+        "aggregate_outcome": "reject",
+        "hard_gate": "unsupported_evidence",
+        "compose_allowed": false,
+        "user_confirmation_required": false
+      }
+    },
+    {
+      "case_id": "p3-rejection",
+      "description": "P3 metadata is sufficient to reject without exposing the blocked body.",
+      "agent_outputs": [
+        {
+          "contract_version": 1,
+          "agent_role": "privacy-reviewer",
+          "mode": "metadata_only",
+          "authorization_id": null,
+          "decision": {
+            "review_id": "decision:p3-rejection",
+            "evidence_id": "evidence:synthetic:2",
+            "reviewer_id": "reviewer:privacy:a",
+            "review_kind": "privacy",
+            "outcome": "reject",
+            "reasoning": "Effective P3 policy is always forbidden and the body remains undisclosed.",
+            "approved_safe_claim": null,
+            "contribution_qualifiers": [],
+            "metric_qualifiers": [],
+            "disclosure_decision": "denied",
+            "disclosure_audience": null,
+            "disclosure_purpose": null,
+            "user_confirmation_required": false,
+            "user_confirmed": false,
+            "questions": []
+          },
+          "claim_id": "claim:synthetic:2",
+          "effective_fact_policy": "F2",
+          "effective_disclosure_policy": "P3",
+          "prefilter_status": "blocked",
+          "permission_status": "denied",
+          "request_output_mode": "targeted_application",
+          "redactions": [],
+          "blocking_reasons": ["p3_forbidden", "prefilter_blocked"]
+        }
+      ],
+      "expected": {
+        "aggregate_outcome": "reject",
+        "hard_gate": "p3_forbidden",
+        "compose_allowed": false,
+        "user_confirmation_required": false
+      }
+    },
+    {
+      "case_id": "unknown-p2-permission",
+      "description": "P2 with no recorded audience/purpose confirmation must stop for the user.",
+      "agent_outputs": [
+        {
+          "contract_version": 1,
+          "agent_role": "privacy-reviewer",
+          "mode": "metadata_only",
+          "authorization_id": null,
+          "decision": {
+            "review_id": "decision:unknown-p2",
+            "evidence_id": "evidence:synthetic:3",
+            "reviewer_id": "reviewer:privacy:b",
+            "review_kind": "privacy",
+            "outcome": "needs_confirmation",
+            "reasoning": "P2 permission for the targeted audience and purpose is unknown.",
+            "approved_safe_claim": null,
+            "contribution_qualifiers": [],
+            "metric_qualifiers": [],
+            "disclosure_decision": "needs_confirmation",
+            "disclosure_audience": null,
+            "disclosure_purpose": null,
+            "user_confirmation_required": true,
+            "user_confirmed": false,
+            "questions": ["Confirm the targeted-application audience and purpose for this P2 claim."]
+          },
+          "claim_id": "claim:synthetic:3",
+          "effective_fact_policy": "F2",
+          "effective_disclosure_policy": "P2",
+          "prefilter_status": "metadata_only",
+          "permission_status": "unknown",
+          "request_output_mode": "targeted_application",
+          "redactions": [],
+          "blocking_reasons": ["p2_permission_unknown"]
+        }
+      ],
+      "expected": {
+        "aggregate_outcome": "needs_confirmation",
+        "hard_gate": "p2_permission_unknown",
+        "compose_allowed": false,
+        "user_confirmation_required": true
+      }
+    },
+    {
+      "case_id": "contribution-metric-conflict",
+      "description": "A semantic claim expands both personal contribution and metric scope.",
+      "agent_outputs": [
+        {
+          "contract_version": 1,
+          "agent_role": "contribution-reviewer",
+          "mode": "reviewed_semantic",
+          "authorization_id": "authorization:synthetic:4",
+          "decision": {
+            "review_id": "decision:contribution-conflict",
+            "evidence_id": "evidence:synthetic:4",
+            "reviewer_id": "reviewer:contribution:a",
+            "review_kind": "contribution_metric",
+            "outcome": "disagree",
+            "reasoning": "The claim turns a team contribution into personal ownership and broadens a sampled metric.",
+            "approved_safe_claim": null,
+            "contribution_qualifiers": [
+              {"text": "team contribution", "scope": "team", "actor": "team"}
+            ],
+            "metric_qualifiers": [
+              {"text": "bounded sample", "name": "sample scope", "value": null, "unit": null, "qualifier": "bounded"}
+            ],
+            "disclosure_decision": null,
+            "disclosure_audience": null,
+            "disclosure_purpose": null,
+            "user_confirmation_required": false,
+            "user_confirmed": false,
+            "questions": []
+          },
+          "claim_id": "claim:synthetic:4",
+          "actor_scope_finding": "preserved",
+          "contribution_finding": "expanded",
+          "metric_finding": "expanded",
+          "mismatches": [
+            {
+              "dimension": "contribution_verb",
+              "source_summary": "contributed within a team",
+              "claim_summary": "led the complete delivery"
+            },
+            {
+              "dimension": "metric_scope",
+              "source_summary": "measured on a bounded sample",
+              "claim_summary": "stated for all production traffic"
+            }
+          ],
+          "required_resolution": "extractive_wording",
+          "blocking_reasons": ["contribution_conflict", "metric_conflict"]
+        }
+      ],
+      "expected": {
+        "aggregate_outcome": "disagree",
+        "hard_gate": "contribution_metric_conflict",
+        "compose_allowed": false,
+        "user_confirmation_required": false
+      }
+    },
+    {
+      "case_id": "majority-cannot-override-policy",
+      "description": "Three approving reviews cannot override one P3 hard-policy rejection.",
+      "agent_outputs": [
+        {
+          "contract_version": 1,
+          "agent_role": "requirement-reviewer",
+          "mode": "reviewed_semantic",
+          "authorization_id": "authorization:synthetic:5",
+          "decision": {
+            "review_id": "decision:majority:requirement",
+            "evidence_id": "requirement-subject:synthetic:5",
+            "reviewer_id": "reviewer:requirement:a",
+            "review_kind": "requirement",
+            "outcome": "approve",
+            "reasoning": "The requirement is directly and currently supported.",
+            "approved_safe_claim": null,
+            "contribution_qualifiers": [],
+            "metric_qualifiers": [],
+            "disclosure_decision": null,
+            "disclosure_audience": null,
+            "disclosure_purpose": null,
+            "user_confirmation_required": false,
+            "user_confirmed": false,
+            "questions": []
+          },
+          "requirement_id": "requirement:synthetic:5",
+          "proposal_id": "proposal:synthetic:5",
+          "support": "exact_source_supported",
+          "classification": "explicit",
+          "freshness": "current",
+          "conflict_status": "none",
+          "source_reference_ids": ["source-ref:synthetic:5:role"],
+          "blocking_reasons": []
+        },
+        {
+          "contract_version": 1,
+          "agent_role": "evidence-reviewer",
+          "mode": "reviewed_semantic",
+          "authorization_id": "authorization:synthetic:5",
+          "decision": {
+            "review_id": "decision:majority:evidence",
+            "evidence_id": "evidence:synthetic:5",
+            "reviewer_id": "reviewer:evidence:b",
+            "review_kind": "evidence",
+            "outcome": "approve",
+            "reasoning": "The bounded claim is supported by the supplied reference.",
+            "approved_safe_claim": "Implemented the bounded synthetic capability.",
+            "contribution_qualifiers": [],
+            "metric_qualifiers": [],
+            "disclosure_decision": null,
+            "disclosure_audience": null,
+            "disclosure_purpose": null,
+            "user_confirmation_required": false,
+            "user_confirmed": false,
+            "questions": []
+          },
+          "claim_id": "claim:synthetic:5",
+          "requirement_ids": ["requirement:synthetic:5"],
+          "support_finding": "entailed",
+          "uncertainty_finding": "preserved",
+          "source_reference_ids": ["source-ref:synthetic:5:evidence"],
+          "unsupported_elements": [],
+          "blocking_reasons": []
+        },
+        {
+          "contract_version": 1,
+          "agent_role": "contribution-reviewer",
+          "mode": "reviewed_semantic",
+          "authorization_id": "authorization:synthetic:5",
+          "decision": {
+            "review_id": "decision:majority:contribution",
+            "evidence_id": "evidence:synthetic:5",
+            "reviewer_id": "reviewer:contribution:c",
+            "review_kind": "contribution_metric",
+            "outcome": "approve",
+            "reasoning": "The bounded claim preserves actor, contribution, and qualifier scope.",
+            "approved_safe_claim": "Implemented the bounded synthetic capability.",
+            "contribution_qualifiers": [
+              {"text": "bounded implementation", "scope": "bounded", "actor": "candidate"}
+            ],
+            "metric_qualifiers": [],
+            "disclosure_decision": null,
+            "disclosure_audience": null,
+            "disclosure_purpose": null,
+            "user_confirmation_required": false,
+            "user_confirmed": false,
+            "questions": []
+          },
+          "claim_id": "claim:synthetic:5",
+          "actor_scope_finding": "preserved",
+          "contribution_finding": "preserved",
+          "metric_finding": "not_applicable",
+          "mismatches": [],
+          "required_resolution": "none",
+          "blocking_reasons": []
+        },
+        {
+          "contract_version": 1,
+          "agent_role": "privacy-reviewer",
+          "mode": "metadata_only",
+          "authorization_id": null,
+          "decision": {
+            "review_id": "decision:majority:privacy",
+            "evidence_id": "evidence:synthetic:5",
+            "reviewer_id": "reviewer:privacy:d",
+            "review_kind": "privacy",
+            "outcome": "reject",
+            "reasoning": "The inherited P3 policy is a hard rejection regardless of other votes.",
+            "approved_safe_claim": null,
+            "contribution_qualifiers": [],
+            "metric_qualifiers": [],
+            "disclosure_decision": "denied",
+            "disclosure_audience": null,
+            "disclosure_purpose": null,
+            "user_confirmation_required": false,
+            "user_confirmed": false,
+            "questions": []
+          },
+          "claim_id": "claim:synthetic:5",
+          "effective_fact_policy": "F2",
+          "effective_disclosure_policy": "P3",
+          "prefilter_status": "blocked",
+          "permission_status": "denied",
+          "request_output_mode": "targeted_application",
+          "redactions": [],
+          "blocking_reasons": ["p3_forbidden", "prefilter_blocked"]
+        }
+      ],
+      "expected": {
+        "aggregate_outcome": "reject",
+        "hard_gate": "p3_forbidden",
+        "compose_allowed": false,
+        "user_confirmation_required": false
+      }
+    },
+    {
+      "case_id": "advisor-attempted-approval",
+      "description": "An advisor payload that claims approval must be rejected by its own schema.",
+      "attempted_output": {
+        "contract_version": 1,
+        "agent_role": "resume-advisor",
+        "advisory_id": "advisory:synthetic:6",
+        "advisor_id": "advisor:workflow:a",
+        "workflow_summary_id": "workflow:synthetic:6",
+        "outcome": "approve",
+        "reasoning": "This attempted approval is deliberately invalid.",
+        "approval_granted": true,
+        "observed_decision_ids": ["decision:synthetic:6"],
+        "warnings": [],
+        "missing_steps": [],
+        "next_actions": []
+      },
+      "expected": {
+        "aggregate_outcome": "invalid",
+        "hard_gate": "advisor_cannot_approve",
+        "compose_allowed": false,
+        "user_confirmation_required": false
+      }
+    }
+  ]
+}

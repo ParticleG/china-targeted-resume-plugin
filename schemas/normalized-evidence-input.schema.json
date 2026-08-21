@@ -1,0 +1,368 @@
+{
+  "$defs": {
+    "ClaimMode": {
+      "enum": [
+        "extractive",
+        "reviewed-semantic"
+      ],
+      "title": "ClaimMode",
+      "type": "string"
+    },
+    "DisclosurePolicy": {
+      "enum": [
+        "P0",
+        "P1",
+        "P2",
+        "P3"
+      ],
+      "title": "DisclosurePolicy",
+      "type": "string"
+    },
+    "EvidenceCandidateIR": {
+      "additionalProperties": false,
+      "properties": {
+        "claim_mode": {
+          "$ref": "#/$defs/ClaimMode",
+          "default": "extractive"
+        },
+        "confidence": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "contribution_qualifiers": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Contribution Qualifiers",
+          "type": "array"
+        },
+        "domain": {
+          "const": "evidence",
+          "default": "evidence",
+          "title": "Domain",
+          "type": "string"
+        },
+        "evidence_id": {
+          "maxLength": 240,
+          "minLength": 1,
+          "title": "Evidence Id",
+          "type": "string"
+        },
+        "metric_qualifiers": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Metric Qualifiers",
+          "type": "array"
+        },
+        "owner": {
+          "$ref": "#/$defs/ProposalOwner",
+          "default": "candidate"
+        },
+        "proposal_id": {
+          "anyOf": [
+            {
+              "maxLength": 240,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Proposal Id"
+        },
+        "proposed_claim": {
+          "minLength": 1,
+          "title": "Proposed Claim",
+          "type": "string"
+        },
+        "reasoning": {
+          "minLength": 1,
+          "title": "Reasoning",
+          "type": "string"
+        },
+        "requirement_ids": {
+          "items": {
+            "maxLength": 240,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Requirement Ids",
+          "type": "array"
+        },
+        "source": {
+          "$ref": "#/$defs/SourceReference"
+        },
+        "unresolved_questions": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Unresolved Questions",
+          "type": "array"
+        }
+      },
+      "required": [
+        "evidence_id",
+        "source",
+        "proposed_claim",
+        "confidence",
+        "reasoning"
+      ],
+      "title": "EvidenceCandidateIR",
+      "type": "object"
+    },
+    "FactPolicy": {
+      "enum": [
+        "F1",
+        "F2",
+        "F3",
+        "F4",
+        "F5",
+        "F6"
+      ],
+      "title": "FactPolicy",
+      "type": "string"
+    },
+    "ProposalOwner": {
+      "enum": [
+        "candidate",
+        "team",
+        "organization",
+        "role",
+        "company",
+        "unknown"
+      ],
+      "title": "ProposalOwner",
+      "type": "string"
+    },
+    "SourceReference": {
+      "additionalProperties": false,
+      "description": "A source identity plus one exact quote; never a source body.",
+      "properties": {
+        "block_id": {
+          "anyOf": [
+            {
+              "maxLength": 240,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Block Id"
+        },
+        "exact_quote": {
+          "minLength": 1,
+          "title": "Exact Quote",
+          "type": "string"
+        },
+        "heading_ancestry": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Heading Ancestry",
+          "type": "array"
+        },
+        "path": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.?(?:/|$))(?!.*\\\\)(?!.*//)(?!.*[/]$)[^\\u0000]+$",
+          "title": "Path",
+          "type": "string"
+        },
+        "section_id": {
+          "anyOf": [
+            {
+              "maxLength": 240,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Section Id"
+        },
+        "source_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Source Hash",
+          "type": "string"
+        },
+        "span": {
+          "$ref": "#/$defs/SourceSpan"
+        },
+        "structural_flags": {
+          "$ref": "#/$defs/StructuralFlags"
+        }
+      },
+      "required": [
+        "path",
+        "source_hash",
+        "span",
+        "exact_quote"
+      ],
+      "title": "SourceReference",
+      "type": "object"
+    },
+    "SourceSpan": {
+      "additionalProperties": false,
+      "description": "An inclusive line range and a half-open UTF-8 byte range.",
+      "properties": {
+        "end_byte": {
+          "minimum": 1,
+          "title": "End Byte",
+          "type": "integer"
+        },
+        "end_line": {
+          "minimum": 1,
+          "title": "End Line",
+          "type": "integer"
+        },
+        "start_byte": {
+          "minimum": 0,
+          "title": "Start Byte",
+          "type": "integer"
+        },
+        "start_line": {
+          "minimum": 1,
+          "title": "Start Line",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "start_line",
+        "end_line",
+        "start_byte",
+        "end_byte"
+      ],
+      "title": "SourceSpan",
+      "type": "object"
+    },
+    "StructuralFlags": {
+      "additionalProperties": false,
+      "description": "Deterministic context captured for a source slice.",
+      "properties": {
+        "block_kind": {
+          "default": "unknown",
+          "minLength": 1,
+          "title": "Block Kind",
+          "type": "string"
+        },
+        "effective_disclosure_policy": {
+          "$ref": "#/$defs/DisclosurePolicy",
+          "default": "P3"
+        },
+        "effective_fact_policy": {
+          "$ref": "#/$defs/FactPolicy",
+          "default": "F5"
+        },
+        "inside_blockquote": {
+          "default": false,
+          "title": "Inside Blockquote",
+          "type": "boolean"
+        },
+        "inside_fence": {
+          "default": false,
+          "title": "Inside Fence",
+          "type": "boolean"
+        },
+        "inside_html": {
+          "default": false,
+          "title": "Inside Html",
+          "type": "boolean"
+        },
+        "is_example": {
+          "default": false,
+          "title": "Is Example",
+          "type": "boolean"
+        },
+        "is_quoted": {
+          "default": false,
+          "title": "Is Quoted",
+          "type": "boolean"
+        },
+        "is_template": {
+          "default": false,
+          "title": "Is Template",
+          "type": "boolean"
+        },
+        "malformed": {
+          "default": false,
+          "title": "Malformed",
+          "type": "boolean"
+        },
+        "negative_instruction": {
+          "default": false,
+          "title": "Negative Instruction",
+          "type": "boolean"
+        },
+        "secret_content": {
+          "default": false,
+          "title": "Secret Content",
+          "type": "boolean"
+        },
+        "secret_path": {
+          "default": false,
+          "title": "Secret Path",
+          "type": "boolean"
+        }
+      },
+      "title": "StructuralFlags",
+      "type": "object"
+    }
+  },
+  "$id": "https://schemas.local/china-targeted-resume/normalized-evidence-input.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "candidates": {
+      "items": {
+        "$ref": "#/$defs/EvidenceCandidateIR"
+      },
+      "title": "Candidates",
+      "type": "array"
+    },
+    "domain": {
+      "const": "evidence",
+      "default": "evidence",
+      "title": "Domain",
+      "type": "string"
+    },
+    "input_id": {
+      "maxLength": 240,
+      "minLength": 1,
+      "title": "Input Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "unresolved_questions": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "title": "Unresolved Questions",
+      "type": "array"
+    }
+  },
+  "required": [
+    "input_id"
+  ],
+  "title": "normalized-evidence-input",
+  "type": "object"
+}

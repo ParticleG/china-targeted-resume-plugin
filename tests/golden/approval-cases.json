@@ -1,0 +1,175 @@
+{
+  "fixture_version": 1,
+  "cases": [
+    {
+      "case_id": "p2-extractive-confirmed",
+      "evidence": {
+        "schema_version": 1,
+        "input_id": "evidence-input.p2",
+        "domain": "evidence",
+        "candidates": [
+          {
+            "evidence_id": "evidence.p2",
+            "proposal_id": null,
+            "source": {
+              "path": "sources/record.md",
+              "source_hash": "sha256:addd9e85b3a41264842ae96705a2d6b8e15d52bd47749dec3d19c72efbd83fdd",
+              "span": {"start_line": 3, "end_line": 3, "start_byte": 12, "end_byte": 53},
+              "exact_quote": "- Built a queue worker for 样例服务.\n",
+              "structural_flags": {
+                "block_kind": "list_item",
+                "inside_fence": false,
+                "inside_blockquote": false,
+                "inside_html": false,
+                "is_example": false,
+                "is_template": false,
+                "is_quoted": false,
+                "negative_instruction": false,
+                "secret_path": false,
+                "secret_content": false,
+                "malformed": false,
+                "effective_fact_policy": "F2",
+                "effective_disclosure_policy": "P2"
+              },
+              "heading_ancestry": ["Evidence"],
+              "section_id": "section.evidence",
+              "block_id": "block.queue"
+            },
+            "proposed_claim": "- Built a queue worker for 样例服务.\n",
+            "domain": "evidence",
+            "owner": "candidate",
+            "confidence": 1.0,
+            "reasoning": "Synthetic targeted evidence requiring explicit confirmation.",
+            "claim_mode": "extractive",
+            "requirement_ids": [],
+            "contribution_qualifiers": [],
+            "metric_qualifiers": [],
+            "unresolved_questions": []
+          }
+        ],
+        "unresolved_questions": []
+      },
+      "reviews": {
+        "schema_version": 1,
+        "decisions": [
+          {
+            "review_id": "review.privacy.p2",
+            "evidence_id": "evidence.p2",
+            "reviewer_id": "reviewer.privacy.synthetic",
+            "review_kind": "privacy",
+            "outcome": "approve",
+            "reasoning": "Targeted synthetic audience and purpose are explicitly allowed.",
+            "approved_safe_claim": "- Built a queue worker for 样例服务.\n",
+            "contribution_qualifiers": [],
+            "metric_qualifiers": [],
+            "disclosure_decision": "allowed",
+            "disclosure_audience": "hiring_team",
+            "disclosure_purpose": "targeted_application",
+            "user_confirmation_required": false,
+            "user_confirmed": false,
+            "questions": []
+          }
+        ]
+      },
+      "options": {
+        "approved_safe_claims": {"evidence.p2": "- Built a queue worker for 样例服务.\n"},
+        "user_confirmations": {"evidence.p2": true}
+      },
+      "expected": {
+        "accepted": true,
+        "claim_id": "claim.evidence.p2",
+        "origin_evidence_ids": ["evidence.p2"],
+        "approval_basis": "user_confirmed",
+        "reviewer_decision_ids": ["review.privacy.p2"],
+        "approved_safe_claim": "- Built a queue worker for 样例服务.\n",
+        "disclosure_decision": "allowed",
+        "disclosure_audience": "hiring_team",
+        "disclosure_purpose": "targeted_application",
+        "contribution_qualifiers": [],
+        "metric_qualifiers": [],
+        "claim_mode": "extractive"
+      }
+    },
+    {
+      "case_id": "p2-extractive-missing-confirmation",
+      "evidence": {
+        "schema_version": 1,
+        "input_id": "evidence-input.p2-missing",
+        "domain": "evidence",
+        "candidates": [
+          {
+            "evidence_id": "evidence.p2-missing",
+            "proposal_id": null,
+            "source": {
+              "path": "sources/record.md",
+              "source_hash": "sha256:addd9e85b3a41264842ae96705a2d6b8e15d52bd47749dec3d19c72efbd83fdd",
+              "span": {"start_line": 3, "end_line": 3, "start_byte": 12, "end_byte": 53},
+              "exact_quote": "- Built a queue worker for 样例服务.\n",
+              "structural_flags": {
+                "block_kind": "list_item",
+                "inside_fence": false,
+                "inside_blockquote": false,
+                "inside_html": false,
+                "is_example": false,
+                "is_template": false,
+                "is_quoted": false,
+                "negative_instruction": false,
+                "secret_path": false,
+                "secret_content": false,
+                "malformed": false,
+                "effective_fact_policy": "F2",
+                "effective_disclosure_policy": "P2"
+              },
+              "heading_ancestry": ["Evidence"],
+              "section_id": "section.evidence",
+              "block_id": "block.queue"
+            },
+            "proposed_claim": "- Built a queue worker for 样例服务.\n",
+            "domain": "evidence",
+            "owner": "candidate",
+            "confidence": 1.0,
+            "reasoning": "Synthetic targeted evidence without confirmation.",
+            "claim_mode": "extractive",
+            "requirement_ids": [],
+            "contribution_qualifiers": [],
+            "metric_qualifiers": [],
+            "unresolved_questions": []
+          }
+        ],
+        "unresolved_questions": []
+      },
+      "reviews": {
+        "schema_version": 1,
+        "decisions": [
+          {
+            "review_id": "review.privacy.p2-missing",
+            "evidence_id": "evidence.p2-missing",
+            "reviewer_id": "reviewer.privacy.synthetic",
+            "review_kind": "privacy",
+            "outcome": "approve",
+            "approved_safe_claim": "- Built a queue worker for 样例服务.\n",
+            "reasoning": "Targeted synthetic audience and purpose are explicitly allowed.",
+            "contribution_qualifiers": [],
+            "metric_qualifiers": [],
+            "disclosure_decision": "allowed",
+            "disclosure_audience": "hiring_team",
+            "disclosure_purpose": "targeted_application",
+            "user_confirmation_required": false,
+            "user_confirmed": false,
+            "questions": []
+          }
+        ]
+      },
+      "options": {
+        "approved_safe_claims": {"evidence.p2-missing": "- Built a queue worker for 样例服务.\n"},
+        "user_confirmations": {}
+      },
+      "expected": {
+        "accepted": false,
+        "error_message_python": "evidence 'evidence.p2-missing': P2 extractive approval requires explicit user confirmation",
+        "error_message": "evidence 'evidence.p2-missing': P2 approval requires a same-run user confirmation receipt",
+        "ts_error_code": "P2_CONFIRMATION_REQUIRED"
+      }
+    }
+  ]
+}

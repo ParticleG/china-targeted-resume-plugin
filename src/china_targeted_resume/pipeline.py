@@ -4,8 +4,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from hashlib import sha256
+import json
 import re
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Mapping, Sequence
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
@@ -30,6 +31,7 @@ from .dossier import DOSSIER_FILES, refresh_role as refresh_role_sections, rende
 from .evidence import build_evidence_map as build_evidence_mappings, build_evidence_record, refresh_match as refresh_evidence_match
 from .gaps import build_gaps
 from .io import create_run_directory, jsonable, read_json, secure_directory, validate_output_root, write_json, write_text
+from .markdown_structure import SourceDocument
 from .models import (
     CompanyRef, JdInput, OutputMode, Requirement, ResumeVariant,
     RoleDossierIR, RoleRef, RoleRequest, RunRequest, SourceRef, TargetBasis,
@@ -517,25 +519,16 @@ def _work_stage_ranges(
     adapter: MarkdownCareerV1Adapter,
     source_path: str,
 ) -> list[tuple[int, int]]:
-    text = _seed_text(adapter, source_path)
-    headings = list(
-        re.finditer(
-            r"^###\s+(?:阶段|stage\b).+$",
-            text,
-            re.M | re.I,
-        )
-    )
-    ranges: list[tuple[int, int]] = []
-    for index, heading in enumerate(headings):
-        start_line = text.count("\n", 0, heading.start()) + 1
-        end_offset = (
-            headings[index + 1].start()
-            if index + 1 < len(headings)
-            else len(text)
-        )
-        end_line = text.count("\n", 0, end_offset) + 1
-        ranges.append((start_line, end_line))
-    return ranges
+    document = _seed_document(adapter, source_path)
+    if document is None:
+        return []
+    return [
+        (section.location.start_line, section.location.end_line + 1)
+        for section in document.sections
+        if section.level == 3
+        and re.match(r"^(?:阶段|stage\b)", section.heading, re.I)
+        and not section.flags.excluded_from_evidence
+    ]
 
 
 def _select_work_records(
@@ -712,13 +705,20 @@ def _select_resume_records(
     return selected
 
 
-def _seed_text(adapter: MarkdownCareerV1Adapter, relative: str) -> str:
+def _seed_document(
+    adapter: MarkdownCareerV1Adapter, relative: str
+) -> SourceDocument | None:
     if relative not in set(adapter.manifest.documents):
-        return ""
-    path = (adapter.root / relative).resolve(strict=True)
-    if not path.is_relative_to(adapter.root) or not path.is_file():
-        return ""
-    return path.read_text(encoding="utf-8")
+        return None
+    try:
+        return adapter.source_document(relative)
+    except (KeyError, ValueError):
+        return None
+
+
+def _seed_text(adapter: MarkdownCareerV1Adapter, relative: str) -> str:
+    document = _seed_document(adapter, relative)
+    return document.text if document is not None else ""
 
 
 def _normalized_field_key(value: str) -> str:
@@ -740,20 +740,28 @@ def _profile_fields(
     adapter: MarkdownCareerV1Adapter,
     relative: str,
 ) -> dict[str, str]:
-    text = _seed_text(adapter, relative)
-    fields = {
-        _normalized_field_key(key): value.strip()
-        for key, value in re.findall(
-            r"^-\s*(?:\*\*)?([^:*：]+?)(?:\*\*)?\s*[:：]\s*(.+?)\s*$",
-            text,
-            flags=re.M,
+    document = _seed_document(adapter, relative)
+    if document is None:
+        return {}
+    fields: dict[str, str] = {}
+    for block in document.blocks:
+        if (
+            block.kind not in {"list_item", "paragraph"}
+            or not adapter.structural_block_is_safe(block)
+        ):
+            continue
+        labeled = re.match(
+            r"^(.{1,80}?)\s*[:：]\s*(.+?)\s*$",
+            _plain_markdown_value(block.plain_text),
         )
-    }
-    if relative in set(adapter.manifest.documents):
-        for table in adapter.parse_pipe_tables(relative):
-            for row in table["rows"][1:]:
-                if len(row) >= 2 and row[0].strip() and row[1].strip():
-                    fields[_normalized_field_key(_plain_markdown_value(row[0]))] = row[1].strip()
+        if labeled:
+            fields[_normalized_field_key(labeled.group(1))] = labeled.group(2)
+    for table in adapter.parse_pipe_tables(relative):
+        for row in table["rows"][1:]:
+            if len(row) >= 2 and row[0].strip() and row[1].strip():
+                fields[_normalized_field_key(_plain_markdown_value(row[0]))] = (
+                    row[1].strip()
+                )
     return fields
 
 
@@ -791,52 +799,66 @@ def _public_profile_links(
     adapter: MarkdownCareerV1Adapter,
     relative: str,
 ) -> list[dict[str, Any]]:
-    text = _seed_text(adapter, relative)
-    links = [
-        {"label": label, "url": url, "source_refs": [relative]}
-        for label, url in re.findall(
-            r"^-\s*Active,\s*P0:\s*\[([^]]+)\]\((https://[^)]+)\)",
-            text,
-            flags=re.M | re.I,
+    document = _seed_document(adapter, relative)
+    if document is None:
+        return []
+    links: list[dict[str, Any]] = []
+    for block in document.blocks:
+        if (
+            block.kind not in {"list_item", "paragraph"}
+            or not adapter.structural_block_is_safe(block)
+        ):
+            continue
+        active = re.search(
+            r"(?:^|[-*+]\s+)Active,\s*P0:\s*"
+            r"\[([^]]+)\]\((https://[^)]+)\)",
+            block.text,
+            re.I,
         )
-    ]
-    if relative in set(adapter.manifest.documents):
-        for table in adapter.parse_pipe_tables(relative):
-            for row in table["rows"][1:]:
-                if not row:
-                    continue
-                label = _plain_markdown_value(row[0])
-                if not re.search(
-                    r"(?:个人\s*GitHub\s*主页|personal\s+(?:github|profile|site))",
-                    label,
-                    re.I,
-                ):
-                    continue
-                status = " ".join(row[2:]).casefold()
-                if re.search(r"(?:不可访问|broken|unreachable|retired)", status, re.I):
-                    continue
-                if not re.search(
-                    r"(?:\bactive\b|\breachable\b|HTTP\s*2\d\d|可访问)",
-                    status,
-                    re.I,
-                ):
-                    continue
-                url_match = next(
-                    (
-                        re.search(r"\]\((https://[^)]+)\)", cell)
-                        for cell in row
-                        if re.search(r"\]\((https://[^)]+)\)", cell)
-                    ),
-                    None,
+        if active:
+            links.append(
+                {
+                    "label": active.group(1),
+                    "url": active.group(2),
+                    "source_refs": [relative],
+                }
+            )
+    for table in adapter.parse_pipe_tables(relative):
+        for row in table["rows"][1:]:
+            if not row:
+                continue
+            label = _plain_markdown_value(row[0])
+            if not re.search(
+                r"(?:个人\s*GitHub\s*主页|personal\s+(?:github|profile|site))",
+                label,
+                re.I,
+            ):
+                continue
+            status = " ".join(row[2:]).casefold()
+            if re.search(r"(?:不可访问|broken|unreachable|retired)", status, re.I):
+                continue
+            if not re.search(
+                r"(?:\bactive\b|\breachable\b|HTTP\s*2\d\d|可访问)",
+                status,
+                re.I,
+            ):
+                continue
+            url_match = next(
+                (
+                    re.search(r"\]\((https://[^)]+)\)", cell)
+                    for cell in row
+                    if re.search(r"\]\((https://[^)]+)\)", cell)
+                ),
+                None,
+            )
+            if url_match is not None:
+                links.append(
+                    {
+                        "label": label,
+                        "url": url_match.group(1),
+                        "source_refs": [relative],
+                    }
                 )
-                if url_match is not None:
-                    links.append(
-                        {
-                            "label": label,
-                            "url": url_match.group(1),
-                            "source_refs": [relative],
-                        }
-                    )
     deduplicated: dict[str, dict[str, Any]] = {}
     for link in links:
         deduplicated.setdefault(str(link["url"]), link)
@@ -946,12 +968,30 @@ def _education_and_honors(
     )
     if not relative:
         return [], []
-    text = _seed_text(adapter, relative)
+    document = _seed_document(adapter, relative)
+    if document is None:
+        return [], []
+    eligible_blocks = [
+        block
+        for block in document.blocks
+        if block.kind in {"list_item", "paragraph"}
+        and adapter.structural_block_is_safe(block)
+    ]
     education: list[dict[str, Any]] = []
-    legacy = re.search(
-        r"^-\s*([^,]+),\s*([^,]+),\s*(\d{4}-\d{2})\s+to\s+(\d{4}-\d{2});\s*F[12],\s*P[012]\.",
-        text,
-        flags=re.M,
+    legacy = next(
+        (
+            match
+            for block in eligible_blocks
+            if (
+                match := re.match(
+                    r"^\s*[-*+]?\s*([^,]+),\s*([^,]+),\s*"
+                    r"(\d{4}-\d{2})\s+to\s+(\d{4}-\d{2});\s*"
+                    r"F[12],\s*P[012]\.",
+                    block.text,
+                )
+            )
+        ),
+        None,
     )
     if legacy:
         degree_field, institution, start_date, end_date = legacy.groups()
@@ -985,31 +1025,35 @@ def _education_and_honors(
                     "source_refs": [relative],
                 }
             )
-    honors = [
-        {
-            "name": name.strip(),
-            "date": year,
-            "source_refs": [relative],
-        }
-        for name, year in re.findall(
-            r"^-\s*([^;]+),\s*(\d{4});\s*F[12],\s*P[012]\.",
-            text,
-            flags=re.M,
+    honors: list[dict[str, Any]] = []
+    for block in eligible_blocks:
+        match = re.match(
+            r"^\s*[-*+]?\s*([^;]+),\s*(\d{4});\s*F[12],\s*P[012]\.",
+            block.text,
         )
-    ][:2]
-    if not honors:
-        honors = [
-            {
-                "name": title.strip(),
-                "date": year,
-                "source_refs": [relative],
-            }
-            for title, year in re.findall(
-                r"^###\s+(.+?)\s*[（(](\d{4})[)）]\s*$",
-                text,
-                flags=re.M,
+        if match:
+            honors.append(
+                {
+                    "name": match.group(1).strip(),
+                    "date": match.group(2),
+                    "source_refs": [relative],
+                }
             )
-        ][:2]
+        if len(honors) >= 2:
+            break
+    if not honors:
+        for section in document.sections:
+            match = re.match(r"^(.+?)\s*[（(](\d{4})[)）]\s*$", section.heading)
+            if match and not section.flags.excluded_from_evidence:
+                honors.append(
+                    {
+                        "name": match.group(1).strip(),
+                        "date": match.group(2),
+                        "source_refs": [relative],
+                    }
+                )
+            if len(honors) >= 2:
+                break
     return education, honors
 
 
@@ -1017,34 +1061,31 @@ def _work_stage_metadata(
     adapter: MarkdownCareerV1Adapter,
     source_path: str,
 ) -> list[dict[str, Any]]:
-    text = _seed_text(adapter, source_path)
-    headings = list(
-        re.finditer(
-            r"^###\s+((?:阶段|stage\b).+)$",
-            text,
-            re.M | re.I,
-        )
-    )
+    document = _seed_document(adapter, source_path)
+    if document is None:
+        return []
     stages: list[dict[str, Any]] = []
-    for index, heading in enumerate(headings):
-        end_offset = (
-            headings[index + 1].start()
-            if index + 1 < len(headings)
-            else len(text)
-        )
-        chunk = text[heading.end() : end_offset]
+    for section in document.sections:
+        if (
+            section.level != 3
+            or not re.match(r"^(?:阶段|stage\b)", section.heading, re.I)
+            or section.flags.excluded_from_evidence
+        ):
+            continue
+        chunk = document.exact_text(section.location)
         period_match = re.search(r"^\s*\*\*([^*\n]+)\*\*", chunk, re.M)
         start_date, end_date = (
             _split_period(period_match.group(1))
             if period_match is not None
             else ("", "")
         )
-        heading_text = _plain_markdown_value(heading.group(1))
-        role = re.split(r"[:：]", heading_text, maxsplit=1)[-1].strip()
+        role = re.split(
+            r"[:：]", _plain_markdown_value(section.heading), maxsplit=1
+        )[-1].strip()
         stages.append(
             {
-                "start_line": text.count("\n", 0, heading.start()) + 1,
-                "end_line": text.count("\n", 0, end_offset) + 1,
+                "start_line": section.location.start_line,
+                "end_line": section.location.end_line + 1,
                 "role": role,
                 "start_date": start_date,
                 "end_date": end_date,
@@ -1387,7 +1428,6 @@ def _candidate_profile(
 
 
 
-_MARKDOWN_HEADING_RE = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
 _ROLE_EVIDENCE_HEADING_RE = re.compile(
     r"\b(?:requirements?|qualifications?|responsibilit(?:y|ies)|preferred|"
     r"preserved excerpt|archived excerpt)\b|"
@@ -1436,63 +1476,74 @@ def _role_label_variants(title: str) -> set[str]:
     return {item for item in variants if item}
 
 
-def _role_evidence_subsections(section: list[str]) -> list[str]:
-    headings: list[tuple[int, int, str]] = []
-    for index, line in enumerate(section):
-        match = _MARKDOWN_HEADING_RE.match(line)
-        if match:
-            headings.append((index, len(match.group(1)), match.group(2)))
+def _role_evidence_subsections(
+    adapter: MarkdownCareerV1Adapter,
+    document: SourceDocument,
+    parent_identity: str,
+) -> list[str]:
     selected: list[str] = []
-    for position, (start, level, title) in enumerate(headings[1:], 1):
-        if not _ROLE_EVIDENCE_HEADING_RE.search(title):
+    for section in document.sections:
+        if not _ROLE_EVIDENCE_HEADING_RE.search(section.heading) or not any(
+            ancestor.identity == parent_identity for ancestor in section.ancestors
+        ):
             continue
-        end = len(section)
-        for next_start, next_level, _ in headings[position + 1:]:
-            if next_level <= level:
-                end = next_start
-                break
-        selected.append("\n".join(section[start:end]).strip())
-    return [item for item in selected if item]
+        text = "\n".join(
+            block.text.strip()
+            for block in document.blocks
+            if block.section_identity == section.identity
+            and adapter.structural_block_is_safe(block)
+        ).strip()
+        if text:
+            selected.append(text)
+    return list(dict.fromkeys(selected))
 
 
-def _role_hiring_scopes(text: str, role: RoleRef) -> list[str]:
-    lines = text.splitlines()
+def _role_hiring_scopes(
+    adapter: MarkdownCareerV1Adapter,
+    document: SourceDocument,
+    role: RoleRef,
+) -> list[str]:
     role_title = _normalize_role_label(role.title)
     exact_sections: list[str] = []
-    for start, line in enumerate(lines):
-        heading = _MARKDOWN_HEADING_RE.match(line)
-        if not heading or role_title not in _normalize_role_label(heading.group(2)):
+    for section in document.sections:
+        if role_title not in _normalize_role_label(section.heading):
             continue
-        level = len(heading.group(1))
-        end = len(lines)
-        for index in range(start + 1, len(lines)):
-            next_heading = _MARKDOWN_HEADING_RE.match(lines[index])
-            if next_heading and len(next_heading.group(1)) <= level:
-                end = index
-                break
-        section = lines[start:end]
-        exact_sections.extend(
-            _role_evidence_subsections(section) or ["\n".join(section).strip()]
+        nested = _role_evidence_subsections(
+            adapter,
+            document,
+            section.identity,
         )
+        direct = "\n".join(
+            block.text.strip()
+            for block in document.blocks
+            if block.section_identity == section.identity
+            and adapter.structural_block_is_safe(block)
+        ).strip()
+        exact_sections.extend(nested or ([direct] if direct else []))
     if exact_sections:
         return list(dict.fromkeys(item for item in exact_sections if item))
 
     variants = _role_label_variants(role.title)
-    scoped_lines: list[str] = []
-    for line in lines:
-        labeled = re.match(
-            r"^\s*[-*•]\s+(?:\*\*)?(.{1,80}?)(?:\*\*)?\s*[:：]\s*(.+?)\s*$",
-            line,
-        )
-        if labeled and _normalize_role_label(labeled.group(1)) in variants:
-            scoped_lines.append(line.strip())
+    scoped: list[str] = []
+    for block in document.blocks:
+        if not adapter.structural_block_is_safe(block):
             continue
-        if not line.lstrip().startswith("|"):
-            continue
-        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
-        if any(_normalize_role_label(cell) in variants for cell in cells):
-            scoped_lines.append("- " + " — ".join(cells))
-    return list(dict.fromkeys(scoped_lines))
+        if block.kind in {"list_item", "paragraph"}:
+            labeled = re.match(
+                r"^(.{1,80}?)[：:]\s*(.+?)\s*$",
+                block.plain_text,
+            )
+            if labeled and any(
+                variant in _normalize_role_label(labeled.group(1))
+                for variant in variants
+            ):
+                scoped.append(block.text.strip())
+        elif block.kind == "table" and any(
+            variant in _normalize_role_label(" ".join(block.cells))
+            for variant in variants
+        ):
+            scoped.append("- " + " — ".join(block.cells))
+    return list(dict.fromkeys(scoped))
 
 
 def _atomic_role_requirement_texts(text: str, role: RoleRef) -> list[str]:
@@ -1537,36 +1588,75 @@ def _atomic_role_requirement_texts(text: str, role: RoleRef) -> list[str]:
 
 
 
+def _safe_structural_scope(
+    adapter: MarkdownCareerV1Adapter,
+    document: SourceDocument,
+) -> str:
+    """Rebuild deterministic parser input from safe structural leaves only."""
+
+    events: list[tuple[int, int, str]] = []
+    for section in document.sections:
+        if (
+            section.heading_ancestor_nodes
+            and not section.flags.excluded_from_evidence
+        ):
+            heading_location = section.heading_ancestor_nodes[-1].location
+            events.append(
+                (
+                    heading_location.start_byte,
+                    0,
+                    document.exact_text(heading_location).strip(),
+                )
+            )
+    for block in document.blocks:
+        if adapter.structural_block_is_safe(block):
+            events.append(
+                (
+                    block.location.start_byte,
+                    1,
+                    document.exact_text(block.location).strip(),
+                )
+            )
+    return "\n\n".join(
+        text
+        for _, _, text in sorted(events)
+        if text
+    )
+
+
 def _tier_b_requirements(
     adapter: MarkdownCareerV1Adapter,
     company: CompanyRef | None,
     role: RoleRef | None,
 ) -> list[Requirement]:
-    sources: dict[str, str] = {}
+    sources: dict[str, SourceDocument] = {}
     if role is not None:
         for ref in role.source_refs:
             path = re.split(r"#|:L\d+", ref, maxsplit=1)[0]
             if path.endswith("roles-and-hiring.md"):
-                text = _seed_text(adapter, path)
-                if text:
-                    sources.setdefault(path, text)
+                document = _seed_document(adapter, path)
+                if document is not None:
+                    sources.setdefault(path, document)
             role_dir = Path(path).parent
             jd_path = (role_dir / "job-description.md").as_posix()
-            text = _seed_text(adapter, jd_path)
-            if text:
-                sources.setdefault(jd_path, text)
+            document = _seed_document(adapter, jd_path)
+            if document is not None:
+                sources.setdefault(jd_path, document)
     if company is not None:
-        for path, text in adapter.load_company(company).items():
+        for path in adapter.load_company(company):
             if path.endswith("roles-and-hiring.md"):
-                sources.setdefault(path, text)
+                document = _seed_document(adapter, path)
+                if document is not None:
+                    sources.setdefault(path, document)
     inferred: list[Requirement] = []
     seen: set[str] = set()
-    for source_ref, text in sources.items():
+    for source_ref, document in sources.items():
         scopes = (
-            _role_hiring_scopes(text, role)
+            _role_hiring_scopes(adapter, document, role)
             if role is not None and source_ref.endswith("roles-and-hiring.md")
-            else [text]
+            else [_safe_structural_scope(adapter, document)]
         )
+        scopes = [scope for scope in scopes if scope.strip()]
         for scope in scopes:
             parsed_items = list(parse_job_description(
                 scope, source_ref=source_ref
@@ -1708,6 +1798,898 @@ def _compact_overflowing_variant(
     )
 
 
+def _ir_identity(value: Any, default: str) -> str:
+    identity = _ir_value(value, "identity", None)
+    if identity is None:
+        identity = _ir_value(value, "id", None)
+    return str(identity or default)
+
+
+def _ir_heading_items(value: Any) -> list[str]:
+    result: list[str] = []
+    for item in value or ():
+        if isinstance(item, str):
+            result.append(item)
+            continue
+        result.append(
+            str(
+                _ir_value(item, "heading", None)
+                or _ir_value(item, "title", None)
+                or _ir_value(item, "text", None)
+                or item
+            )
+        )
+    return result
+
+def _ir_value(value: Any, name: str, default: Any = None) -> Any:
+    if isinstance(value, Mapping):
+        return value.get(name, default)
+    return getattr(value, name, default)
+
+
+def _ir_mapping(value: Any) -> dict[str, Any]:
+    if hasattr(value, "model_dump"):
+        return dict(value.model_dump(mode="json", exclude_none=False))
+    if isinstance(value, Mapping):
+        return dict(value)
+    if value is None:
+        return {}
+    names = (
+        "block_kind",
+        "kind",
+        "inside_fence",
+        "inside_blockquote",
+        "inside_html",
+        "inside_example",
+        "inside_template",
+        "inside_quoted",
+        "negative_instruction",
+        "secret_path",
+        "secret_content",
+        "effective_fact_policy",
+        "effective_fact_state",
+        "fact_policy",
+        "effective_disclosure_policy",
+        "effective_disclosure",
+        "disclosure_policy",
+        "start_line",
+        "end_line",
+        "start_byte",
+        "end_byte",
+        "line_start",
+        "line_end",
+        "byte_start",
+        "byte_end",
+    )
+    return {name: getattr(value, name) for name in names if hasattr(value, name)}
+
+
+def _ir_hash(value: Any) -> str:
+    digest = str(value or "")
+    return digest if digest.startswith("sha256:") else f"sha256:{digest}"
+
+
+def _ir_span(value: Any) -> dict[str, Any] | None:
+    if value is None:
+        return None
+    nested = _ir_value(value, "location", None) or _ir_value(value, "span", None)
+    raw = _ir_mapping(nested or value)
+    aliases = {
+        "start_line": ("start_line", "line_start"),
+        "end_line": ("end_line", "line_end"),
+        "start_byte": ("start_byte", "byte_start"),
+        "end_byte": ("end_byte", "byte_end"),
+    }
+    result: dict[str, Any] = {}
+    for target, names in aliases.items():
+        for name in names:
+            if raw.get(name) is not None:
+                result[target] = int(raw[name])
+                break
+    return result if len(result) == 4 else None
+
+
+def _ir_flags(value: Any) -> dict[str, Any]:
+    raw = _ir_mapping(value)
+    aliases = {
+        "block_kind": ("block_kind", "kind"),
+        "inside_fence": ("inside_fence",),
+        "inside_blockquote": ("inside_blockquote", "inside_block_quote"),
+        "inside_html": ("inside_html",),
+        "is_example": ("is_example", "inside_example", "example"),
+        "is_template": ("is_template", "inside_template", "template"),
+        "is_quoted": ("is_quoted", "inside_quoted", "quoted"),
+        "negative_instruction": ("negative_instruction",),
+        "secret_path": ("secret_path",),
+        "secret_content": ("secret_content",),
+        "malformed": ("malformed",),
+        "effective_fact_policy": (
+            "effective_fact_policy",
+            "fact_policy",
+            "effective_fact_state",
+        ),
+        "effective_disclosure_policy": (
+            "effective_disclosure_policy",
+            "disclosure_policy",
+            "effective_disclosure",
+        ),
+    }
+    result: dict[str, Any] = {}
+    for target, names in aliases.items():
+        for name in names:
+            if raw.get(name) is not None:
+                item = raw[name]
+                result[target] = getattr(item, "value", item)
+                break
+    return result
+
+def _source_map_block_is_safe(block: Any) -> bool:
+    flags = _ir_mapping(
+        _ir_value(block, "structural_flags", None)
+        or _ir_value(block, "flags", None)
+        or block
+    )
+    if any(
+        bool(flags.get(name))
+        for name in (
+            "inside_fence",
+            "inside_blockquote",
+            "inside_block_quote",
+            "inside_html",
+            "inside_example",
+            "inside_template",
+            "inside_quoted",
+            "negative_instruction",
+            "secret_path",
+            "secret_content",
+            "malformed",
+        )
+    ):
+        return False
+    fact = _ir_value(
+        block,
+        "effective_fact_policy",
+        _ir_value(block, "effective_fact_state", None),
+    )
+    disclosure = _ir_value(
+        block,
+        "effective_disclosure_policy",
+        _ir_value(block, "effective_disclosure", None),
+    )
+    fact_explicit = bool(
+        _ir_value(
+            block,
+            "has_explicit_fact_policy",
+            _ir_value(block, "fact_policy_explicit", False),
+        )
+    )
+    disclosure_explicit = bool(
+        _ir_value(
+            block,
+            "has_explicit_disclosure_policy",
+            _ir_value(block, "disclosure_policy_explicit", False),
+        )
+    )
+    return not (
+        (fact_explicit and getattr(fact, "value", fact) == "F6")
+        or (
+            disclosure_explicit
+            and getattr(disclosure, "value", disclosure) == "P3"
+        )
+    )
+
+
+
+def _ir_relative_path(root: Path, value: Any) -> str:
+    candidate = Path(str(value or ""))
+    if candidate.is_absolute():
+        resolved = candidate.expanduser().resolve(strict=True)
+    else:
+        resolved = (root / candidate).resolve(strict=True)
+    if resolved.is_symlink():
+        raise PipelineError(f"source document must not be a symlink: {resolved}")
+    try:
+        return resolved.relative_to(root).as_posix()
+    except ValueError as exc:
+        raise PipelineError(f"source path escapes source root: {value}") from exc
+
+
+def _source_map_from_root(root: str | Path) -> Any:
+    """Build metadata-only SourceMapIR from one structural read per document."""
+
+    from .ir import SourceMapIR
+    from .markdown_structure import parse_markdown
+
+    source_root = Path(root).expanduser().resolve(strict=True)
+    if not source_root.is_dir() or source_root.is_symlink():
+        raise PipelineError(f"source root must be a real directory: {root}")
+    documents: list[dict[str, Any]] = []
+    sections: list[dict[str, Any]] = []
+    blocks: list[dict[str, Any]] = []
+    seen_paths: set[str] = set()
+    for path in sorted(source_root.rglob("*")):
+        if not path.is_file() or path.suffix.casefold() not in {".md", ".markdown"}:
+            continue
+        relative_candidate = path.relative_to(source_root).as_posix()
+        if any(
+            re.search(
+                r"(?:^|[-_.])(?:secret|secrets|credential|credentials|password|"
+                r"passwords|private[-_]?key|token|tokens|\.env)(?:$|[-_.])",
+                part,
+                re.IGNORECASE,
+            )
+            for part in PurePosixPath(relative_candidate).parts
+        ):
+            continue
+        if path.is_symlink():
+            raise PipelineError(f"source document must not be a symlink: {path}")
+        relative = _ir_relative_path(source_root, path)
+        if relative in seen_paths:
+            continue
+        seen_paths.add(relative)
+        document = parse_markdown(path, source_root=source_root)
+        document_id = str(_ir_value(document, "document_id", f"document:{relative}"))
+        navigation = getattr(document, "navigation_metadata", None)
+        navigation_payload: Mapping[str, Any] = {}
+        if callable(navigation):
+            try:
+                raw_navigation = navigation()
+            except ValueError as exc:
+                raise PipelineError(str(exc)) from exc
+            if not isinstance(raw_navigation, Mapping):
+                raise PipelineError("navigation metadata must be a mapping")
+            navigation_payload = raw_navigation
+        source_hash = _ir_hash(_ir_value(document, "source_hash"))
+        document_span = _ir_span(
+            _ir_value(document, "span", None)
+            or _ir_value(document, "location", None)
+        )
+        fact_policy = _ir_value(
+            document,
+            "document_fact_policy",
+            _ir_value(document, "document_fact_state", "F1"),
+        )
+        disclosure_policy = _ir_value(
+            document,
+            "document_disclosure_policy",
+            _ir_value(document, "document_disclosure", "P0"),
+        )
+        document_payload: dict[str, Any] = {
+            "document_id": document_id,
+            "path": relative,
+            "source_hash": source_hash,
+            "document_fact_policy": getattr(fact_policy, "value", fact_policy),
+            "document_disclosure_policy": getattr(disclosure_policy, "value", disclosure_policy),
+            "validation_warnings": [
+                str(item)
+                for item in (
+                    _ir_value(document, "validation_warnings", None)
+                    or _ir_value(document, "warnings", ())
+                )
+            ],
+        }
+        if document_span is not None:
+            document_payload["span"] = document_span
+        documents.append(document_payload)
+
+        all_sections = list(_ir_value(document, "sections", ()) or ())
+        safe_section_ids = {
+            str(item.get("identity"))
+            for item in navigation_payload.get("sections", ())
+            if isinstance(item, Mapping) and item.get("identity")
+        }
+        raw_sections = [
+            section
+            for section in all_sections
+            if _ir_identity(section, "") in safe_section_ids
+        ]
+        raw_blocks = list(_ir_value(document, "blocks", ()) or ())
+        section_ids: dict[int, str] = {}
+        block_ids: dict[int, str] = {}
+        for index, section in enumerate(raw_sections):
+            section_ids[id(section)] = _ir_identity(
+                section,
+                f"{document_id}:section:{index + 1}",
+            )
+        for index, block in enumerate(raw_blocks):
+            block_ids[id(block)] = _ir_identity(
+                block,
+                f"{document_id}:block:{index + 1}",
+            )
+        section_block_ids: dict[str, list[str]] = {value: [] for value in section_ids.values()}
+        for block in raw_blocks:
+            if not _source_map_block_is_safe(block):
+                continue
+            block_id = block_ids[id(block)]
+            section = _ir_value(block, "section", None)
+            section_id = _ir_value(block, "section_id", None)
+            if section_id is None:
+                section_id = _ir_value(block, "section_identity", None)
+            if section_id is None and section is not None:
+                section_id = section_ids.get(id(section))
+            if section_id is None:
+                section_index = _ir_value(block, "section_index", None)
+                if section_index is not None and int(section_index) < len(raw_sections):
+                    section_id = section_ids[id(raw_sections[int(section_index)])]
+            if section_id not in section_block_ids:
+                continue
+            block_span = _ir_span(
+                _ir_value(block, "span", None)
+                or _ir_value(block, "location", None)
+            )
+            if block_span is None:
+                continue
+            block_flags = _ir_flags(
+                _ir_value(block, "structural_flags", None)
+                or _ir_value(block, "flags", None)
+                or block
+            )
+            block_flags.setdefault(
+                "block_kind",
+                str(_ir_value(block, "block_kind", _ir_value(block, "kind", "unknown"))),
+            )
+            block_fact = _ir_value(block, "effective_fact_policy", None) or _ir_value(block, "effective_fact_state", None)
+            block_disclosure = _ir_value(block, "effective_disclosure_policy", None) or _ir_value(block, "effective_disclosure", None)
+            if block_fact is not None:
+                block_flags["effective_fact_policy"] = getattr(block_fact, "value", block_fact)
+            if block_disclosure is not None:
+                block_flags["effective_disclosure_policy"] = getattr(block_disclosure, "value", block_disclosure)
+            block_payload: dict[str, Any] = {
+                "block_id": block_id,
+                "document_id": document_id,
+                "span": block_span,
+                "heading_ancestry": _ir_heading_items(
+                    _ir_value(block, "heading_ancestry", ())
+                    or _ir_value(block, "ancestors", ())
+                ),
+                "structural_flags": block_flags,
+            }
+            block_payload["section_id"] = section_id
+            section_block_ids[section_id].append(block_id)
+            blocks.append(block_payload)
+        for index, section in enumerate(raw_sections):
+            section_id = section_ids[id(section)]
+            section_span = _ir_span(
+                _ir_value(section, "span", None)
+                or _ir_value(section, "location", None)
+            )
+            if section_span is None:
+                continue
+            heading = str(
+                _ir_value(section, "heading", None)
+                or _ir_value(section, "title", None)
+                or f"Section {index + 1}"
+            )
+            ancestry = _ir_heading_items(
+                _ir_value(section, "heading_ancestry", ())
+                or _ir_value(section, "ancestors", ())
+            )
+            section_flags = _ir_flags(
+                _ir_value(section, "structural_flags", None)
+                or _ir_value(section, "flags", None)
+                or section
+            )
+            section_flags.setdefault("block_kind", "section")
+            section_fact = _ir_value(section, "effective_fact_policy", None) or _ir_value(section, "effective_fact_state", None)
+            section_disclosure = _ir_value(section, "effective_disclosure_policy", None) or _ir_value(section, "effective_disclosure", None)
+            if section_fact is not None:
+                section_flags["effective_fact_policy"] = getattr(section_fact, "value", section_fact)
+            if section_disclosure is not None:
+                section_flags["effective_disclosure_policy"] = getattr(section_disclosure, "value", section_disclosure)
+            sections.append(
+                {
+                    "section_id": section_id,
+                    "document_id": document_id,
+                    "span": section_span,
+                    "heading": heading,
+                    "heading_ancestry": ancestry,
+                    "duplicate_index": int(
+                        _ir_value(
+                            section,
+                            "duplicate_index",
+                            _ir_value(section, "occurrence", 0),
+                        )
+                        or 0
+                    ),
+                    "block_ids": section_block_ids.get(section_id, []),
+                    "structural_flags": section_flags,
+                }
+            )
+    return SourceMapIR(documents=documents, sections=sections, blocks=blocks, proposals=[])
+
+
+def _ir_unwrap(payload: Mapping[str, Any], *keys: str) -> Mapping[str, Any]:
+    for key in keys:
+        nested = payload.get(key)
+        if isinstance(nested, Mapping):
+            return nested
+    return payload
+def _validate_ir_with_sources(
+    value: Mapping[str, Any],
+    source: str | Path | None,
+    schema: str,
+) -> Any:
+    from .validation import (
+        revalidate_evidence_input,
+        revalidate_role_input,
+    )
+
+    if source is None:
+        raise PipelineError(f"{schema} validation requires --source")
+    source_map_payload = value.get("source_map") or value.get("source_map_ir")
+    if not isinstance(source_map_payload, Mapping):
+        raise PipelineError(f"{schema} validation requires source_map")
+    normalized = _ir_unwrap(
+        value,
+        schema,
+        schema.replace("-", "_"),
+        "input",
+        "evidence_input",
+        "role_input",
+    )
+    source_map = _ir_unwrap(source_map_payload, "source_map", "source-map")
+    if schema == "normalized-role-input":
+        return revalidate_role_input(normalized, source_map, source)
+    return revalidate_evidence_input(normalized, source_map, source)
+
+def _materialize_extractive(
+    value: Mapping[str, Any],
+    source: str | Path | None,
+) -> dict[str, Any]:
+    from .ir import (
+        ClaimMode,
+        EvidenceCandidateIR,
+        ProposalDomain,
+        ProposalOwner,
+        SemanticProposal,
+        SourceMapIR,
+        SourceReference,
+    )
+    from .markdown_structure import parse_markdown
+    from .validation import revalidate_evidence_input, revalidate_source_map
+
+    if source is None:
+        raise PipelineError("materialize_extractive requires --source")
+    source_map_payload = value.get("source_map") or value.get("source_map_ir")
+    wrapper = value.get("materialize_extractive")
+    if not isinstance(source_map_payload, Mapping) or not isinstance(wrapper, Mapping):
+        raise PipelineError("materialize_extractive requires source_map and wrapper")
+    marker = wrapper.get("profile_field_marker")
+    input_id = wrapper.get("input_id")
+    block_ids = wrapper.get("block_ids") or wrapper.get("selected_block_ids")
+    evidence_ids = wrapper.get("evidence_ids")
+    requirement_ids = wrapper.get("requirement_ids")
+    if not isinstance(input_id, str) or not input_id:
+        raise PipelineError("materialize_extractive requires input_id")
+    if not isinstance(marker, str) or not marker:
+        raise PipelineError("materialize_extractive requires profile_field_marker")
+    if not isinstance(block_ids, list) or not block_ids:
+        raise PipelineError("materialize_extractive requires selected block_ids")
+    if not isinstance(evidence_ids, (list, Mapping)):
+        raise PipelineError("materialize_extractive requires evidence_ids")
+    if not isinstance(requirement_ids, (list, Mapping)):
+        raise PipelineError("materialize_extractive requires requirement_ids")
+    source_map = SourceMapIR.model_validate(
+        _ir_unwrap(source_map_payload, "source_map", "source-map")
+    )
+    revalidate_source_map(source_map, source)
+    documents = {item.document_id: item for item in source_map.documents}
+    blocks = {item.block_id: item for item in source_map.blocks}
+    parsed: dict[str, Any] = {}
+    candidates: list[EvidenceCandidateIR] = []
+    proposals = list(source_map.proposals)
+    for index, selected_id in enumerate(block_ids):
+        block = blocks.get(str(selected_id))
+        if block is None:
+            raise PipelineError(f"materialize_extractive unknown block ID: {selected_id!r}")
+        flags = block.structural_flags
+        fact = str(getattr(flags.effective_fact_policy, "value", flags.effective_fact_policy))
+        disclosure = str(getattr(flags.effective_disclosure_policy, "value", flags.effective_disclosure_policy))
+        if flags.blocked or fact in {"F3", "F4", "F5", "F6"} or disclosure == "P3":
+            raise PipelineError(f"materialize_extractive blocked block: {selected_id!r}")
+        document = documents.get(block.document_id)
+        if document is None:
+            raise PipelineError(f"materialize_extractive block has unknown document: {selected_id!r}")
+        if isinstance(evidence_ids, Mapping):
+            evidence_id = evidence_ids.get(str(selected_id))
+        else:
+            evidence_id = evidence_ids[index] if index < len(evidence_ids) else None
+        if not isinstance(evidence_id, str) or not evidence_id:
+            raise PipelineError(f"materialize_extractive missing evidence ID for block: {selected_id!r}")
+        if isinstance(requirement_ids, Mapping):
+            reqs = requirement_ids.get(str(selected_id), [])
+        else:
+            reqs = requirement_ids or []
+        if not isinstance(reqs, list) or any(not isinstance(item, str) for item in reqs):
+            raise PipelineError("materialize_extractive requirement_ids must be string lists")
+        if document.path not in parsed:
+            parsed[document.path] = parse_markdown(
+                Path(source).expanduser().resolve(strict=True) / document.path,
+                source_root=Path(source).expanduser().resolve(strict=True),
+            )
+        parsed_document = parsed[document.path]
+        actual = next(
+            (item for item in parsed_document.blocks if item.identity == block.block_id),
+            None,
+        )
+        if actual is None:
+            raise PipelineError(f"materialize_extractive block disappeared: {selected_id!r}")
+        location = actual.location
+        if (
+            location.source_hash != document.source_hash
+            or location.start_line != block.span.start_line
+            or location.end_line != block.span.end_line
+            or location.start_byte != block.span.start_byte
+            or location.end_byte != block.span.end_byte
+        ):
+            raise PipelineError(f"materialize_extractive block span changed: {selected_id!r}")
+        exact_quote = actual.exact_quote
+        reference = SourceReference(
+            path=document.path,
+            source_hash=document.source_hash,
+            span=block.span,
+            exact_quote=exact_quote,
+            structural_flags=flags,
+            heading_ancestry=list(actual.heading_ancestry),
+            section_id=block.section_id,
+            block_id=block.block_id,
+        )
+        proposal_id = f"materialized:{evidence_id}"
+        proposal = SemanticProposal(
+            proposal_id=proposal_id,
+            source=reference,
+            domain=ProposalDomain.EVIDENCE,
+            owner=ProposalOwner.UNKNOWN,
+            proposed_claim=exact_quote,
+            confidence=1.0,
+            reasoning=f"mechanical extractive materialization for {marker}",
+            claim_mode=ClaimMode.EXTRACTIVE,
+            unresolved_questions=["candidate ownership requires independent confirmation"],
+        )
+        candidate = EvidenceCandidateIR(
+            evidence_id=evidence_id,
+            proposal_id=proposal_id,
+            source=reference,
+            proposed_claim=exact_quote,
+            owner=ProposalOwner.UNKNOWN,
+            confidence=1.0,
+            reasoning=proposal.reasoning,
+            claim_mode=ClaimMode.EXTRACTIVE,
+            requirement_ids=reqs,
+            unresolved_questions=["candidate ownership requires independent confirmation"],
+        )
+        proposals.append(proposal)
+        candidates.append(candidate)
+    augmented_map = source_map.model_copy(update={"proposals": proposals})
+    revalidate_source_map(augmented_map, source)
+    evidence = revalidate_evidence_input(
+        {"schema_version": 1, "input_id": input_id, "domain": "evidence", "candidates": candidates},
+        augmented_map,
+        source,
+    )
+    return {
+        "source_map": augmented_map,
+        "evidence_input": evidence,
+        "profile_field_marker": marker,
+    }
+
+
+
+def _write_stage_ir(value: Any, output: str | Path | None, source: str | Path | None = None) -> Any:
+    if output is not None:
+        if source is not None:
+            validate_output_root(source, Path(output).parent)
+        write_json(output, value)
+    return value
+
+
+def _approved_claim_evidence_records(
+    approved: Any,
+    evidence_input: Mapping[str, Any] | Any,
+) -> list[dict[str, Any]]:
+    """Adapt locked claims to composition only after origin resolution."""
+
+    candidates = list(_ir_value(evidence_input, "candidates", ()) or ())
+    by_id = {
+        str(_ir_value(candidate, "evidence_id")): candidate
+        for candidate in candidates
+    }
+    if not candidates:
+        raise PipelineError("generate-from-ir requires a non-empty normalized evidence input")
+    claims = _ir_value(approved, "claims", ()) or ()
+    records: list[dict[str, Any]] = []
+    for claim in claims:
+        claim_id = str(_ir_value(claim, "claim_id"))
+        origin_ids = list(_ir_value(claim, "origin_evidence_ids", ()) or ())
+        if not origin_ids:
+            raise PipelineError(f"approved claim {claim_id!r} has no origin evidence IDs")
+        origins = []
+        for evidence_id in origin_ids:
+            origin = by_id.get(str(evidence_id))
+            if origin is None:
+                raise PipelineError(
+                    f"approved claim {claim_id!r} references unknown evidence {evidence_id!r}"
+                )
+            source = _ir_value(origin, "source", None)
+            source_data = _ir_mapping(source)
+            flags = _ir_mapping(_ir_value(source, "structural_flags", None))
+            required = ("path", "source_hash", "span", "exact_quote")
+            missing = [key for key in required if not source_data.get(key)]
+            if missing:
+                raise PipelineError(
+                    f"evidence {evidence_id!r} source reference is incomplete: {missing}"
+                )
+            if not flags.get("effective_fact_policy") or not flags.get("effective_disclosure_policy"):
+                raise PipelineError(
+                    f"evidence {evidence_id!r} source reference lacks effective fact/disclosure policy"
+                )
+            section = source_data.get("section_id") or source_data.get("block_id")
+            if not section:
+                raise PipelineError(f"evidence {evidence_id!r} source reference lacks section or block identity")
+            origins.append((source_data, flags, str(section)))
+        source_data, flags, section = origins[0]
+        origin = by_id[str(origin_ids[0])]
+        contribution = list(_ir_value(origin, "contribution_qualifiers", ()) or ())
+        metric = list(_ir_value(origin, "metric_qualifiers", ()) or ())
+        contribution_text = "; ".join(
+            str(_ir_value(item, "text", item)) for item in contribution
+        ) or "approved"
+        metric_text = "; ".join(str(_ir_value(item, "text", item)) for item in metric) or None
+        records.append(
+            {
+                "evidence_id": claim_id,
+                "claim_id": claim_id,
+                "evidence_ids": [str(item) for item in origin_ids],
+                "source": {
+                    "path": str(source_data["path"]),
+                    "section": section,
+                    "source_hash": str(source_data["source_hash"]),
+                    "source_type": "approved-claim",
+                },
+                "fact_state": str(flags["effective_fact_policy"]),
+                "disclosure": str(flags["effective_disclosure_policy"]),
+                "match_state": "已有直接证据",
+                "contribution_scope": contribution_text,
+                "metric_precision": metric_text,
+                "safe_claim": str(_ir_value(claim, "approved_safe_claim")),
+                "forbidden_expansions": [],
+                "freshness": {"dynamic": False, "stale": False},
+                "output_mode": "targeted_application",
+            }
+        )
+    return records
+
+
+def _minimal_generation_profile(
+    claims: Sequence[Any],
+    payload: Mapping[str, Any],
+    records: Sequence[Any] = (),
+) -> dict[str, Any]:
+    """Build every visible profile value from locked claim IDs."""
+
+    by_id = {str(_ir_value(claim, "claim_id")): claim for claim in claims}
+    record_refs = {
+        str(_ir_value(record, "evidence_id")): provenance_ref(record)
+        for record in records
+        if provenance_ref(record)
+    }
+    def refs_for(ids: Sequence[str]) -> list[str]:
+        return list(dict.fromkeys(record_refs[item] for item in ids if item in record_refs))
+
+    def claim_text(claim_id: Any, *, label: str) -> str:
+        if not isinstance(claim_id, str) or claim_id not in by_id:
+            raise PipelineError(f"{label} references unknown claim ID: {claim_id!r}")
+        claim = by_id[claim_id]
+        if str(_ir_value(claim, "disclosure_decision")) != "allowed":
+            raise PipelineError(f"{label} references a non-disclosure-approved claim")
+        return str(_ir_value(claim, "approved_safe_claim"))
+
+    profile_mapping = payload.get("candidate_profile_claims")
+    if not isinstance(profile_mapping, Mapping) or not profile_mapping.get("name"):
+        raise PipelineError("generate-from-ir requires candidate_profile_claims.name")
+    profile_allowed = {"name", "summary", "email", "phone", "location", "links"}
+    unknown_profile = sorted(set(profile_mapping).difference(profile_allowed))
+    if unknown_profile:
+        raise PipelineError(f"unknown candidate profile claim keys: {unknown_profile}")
+    used: set[str] = set()
+    values: dict[str, Any] = {}
+    for key, raw_ids in profile_mapping.items():
+        ids = raw_ids if isinstance(raw_ids, list) else [raw_ids]
+        if not ids or any(not isinstance(item, str) for item in ids):
+            raise PipelineError(f"candidate profile mapping {key!r} must contain claim IDs")
+        texts = []
+        for claim_id in ids:
+            if claim_id in used:
+                raise PipelineError(f"candidate profile claim ID reused: {claim_id!r}")
+            used.add(claim_id)
+            texts.append(claim_text(claim_id, label=f"candidate profile {key}"))
+        values[key] = texts if key in {"summary", "links"} else texts[0]
+
+    placements = payload.get("claim_placements")
+    if not isinstance(placements, (list, Mapping)):
+        raise PipelineError("generate-from-ir requires claim_placements")
+    if isinstance(placements, Mapping):
+        normalized_placements = []
+        for claim_id, metadata in placements.items():
+            if not isinstance(metadata, Mapping):
+                raise PipelineError("claim_placements mapping values must be objects")
+            normalized_placements.append({"claim_id": claim_id, **metadata})
+    else:
+        normalized_placements = list(placements)
+    sections = {"summary", "skill", "experience", "project", "education", "honor"}
+    placement_used: set[str] = set()
+    metadata_owners: dict[str, tuple[str, str]] = {}
+    groups: dict[tuple[str, str], dict[str, Any]] = {}
+    seen_orders: set[tuple[str, str, int]] = set()
+    metadata_keys = (
+        "title_claim_id",
+        "organization_claim_id",
+        "period_claim_id",
+        "context_claim_id",
+    )
+    for raw_placement in normalized_placements:
+        if not isinstance(raw_placement, Mapping):
+            raise PipelineError("claim_placements entries must be objects")
+        placement = dict(raw_placement)
+        allowed = {"claim_id", "section", "group_id", "order", *metadata_keys}
+        unknown = sorted(set(placement).difference(allowed))
+        if unknown:
+            raise PipelineError(f"unknown claim placement keys: {unknown}")
+        claim_id = placement.get("claim_id")
+        section = placement.get("section")
+        group_id = placement.get("group_id")
+        order = placement.get("order")
+        if not isinstance(claim_id, str) or claim_id not in by_id:
+            raise PipelineError(f"claim placement references unknown claim ID: {claim_id!r}")
+        if claim_id in used or claim_id in placement_used:
+            raise PipelineError(f"claim ID is duplicated across profile/placements: {claim_id!r}")
+        if section not in sections or not isinstance(group_id, str) or not group_id:
+            raise PipelineError("claim placement requires closed section and stable group_id")
+        if not isinstance(order, int) or order < 0:
+            raise PipelineError("claim placement requires non-negative integer order")
+        group_key = (section, group_id)
+        order_key = (*group_key, order)
+        if order_key in seen_orders:
+            raise PipelineError(f"duplicate claim placement order: {order_key}")
+        seen_orders.add(order_key)
+        group = groups.setdefault(
+            group_key,
+            {"section": section, "group_id": group_id, "items": [], "metadata": {}},
+        )
+        for key in metadata_keys:
+            metadata_id = placement.get(key)
+            inherited = group["metadata"].get(key)
+            if metadata_id is None and inherited is not None:
+                placement[key] = inherited
+                continue
+            if metadata_id is None:
+                continue
+            if inherited is not None and inherited != metadata_id:
+                raise PipelineError(f"claim placement metadata differs within group: {group_key}")
+            owner = metadata_owners.get(str(metadata_id))
+            if owner is not None and owner != group_key:
+                raise PipelineError(f"claim placement metadata reused across groups: {metadata_id!r}")
+            if metadata_id in used or metadata_id == claim_id:
+                raise PipelineError(f"claim placement metadata ID is duplicated: {metadata_id!r}")
+            metadata_owners[str(metadata_id)] = group_key
+            group["metadata"][key] = metadata_id
+            placement_used.add(str(metadata_id))
+            claim_text(metadata_id, label="claim placement metadata")
+        if section in {"skill", "experience", "project", "education", "honor"} and not placement.get("title_claim_id"):
+            raise PipelineError(f"{section} placement requires title_claim_id")
+        if section == "experience" and not placement.get("organization_claim_id"):
+            raise PipelineError("experience placement requires organization_claim_id")
+        placement_used.add(claim_id)
+        group["items"].append(placement)
+
+    all_ids = set(by_id)
+    covered = used | placement_used
+    if covered != all_ids:
+        raise PipelineError(f"claim placements do not cover locked claims: {sorted(all_ids - covered)}")
+
+    metadata_ids = used | placement_used
+    summary: list[str] = []
+    skills: list[dict[str, Any]] = []
+    experience: list[dict[str, Any]] = []
+    projects: list[dict[str, Any]] = []
+    education: list[dict[str, Any]] = []
+    honors: list[dict[str, Any]] = []
+    for (section, group_id), group in sorted(groups.items(), key=lambda item: item[0]):
+        items = sorted(group["items"], key=lambda item: item["order"])
+        primary_ids = [str(item["claim_id"]) for item in items]
+        metadata_group_ids = primary_ids + [
+            str(item[key])
+            for item in items
+            for key in (
+                "title_claim_id",
+                "organization_claim_id",
+                "period_claim_id",
+                "context_claim_id",
+            )
+            if item.get(key)
+        ]
+        group_refs = refs_for(metadata_group_ids)
+        if section == "summary":
+            summary.extend(claim_text(item["claim_id"], label="summary placement") for item in items)
+            continue
+        title = claim_text(items[0]["title_claim_id"], label="placement title")
+        organization = (
+            claim_text(items[0]["organization_claim_id"], label="placement organization")
+            if items[0].get("organization_claim_id") else None
+        )
+        context = (
+            claim_text(items[0]["context_claim_id"], label="placement context")
+            if items[0].get("context_claim_id") else None
+        )
+        period = (
+            claim_text(items[0]["period_claim_id"], label="placement period")
+            if items[0].get("period_claim_id") else None
+        )
+        primary_texts = [claim_text(item["claim_id"], label="placement claim") for item in items]
+        if section == "skill":
+            skills.append({
+                "name": title,
+                "items": primary_texts,
+                "evidence_ids": primary_ids,
+                "provenance_refs": group_refs,
+            })
+        elif section == "experience":
+            experience.append({
+                "organization": organization,
+                "role": title,
+                "location": None,
+                "start_date": period or "",
+                "end_date": "",
+                "context": context,
+                "evidence_ids": primary_ids,
+                "provenance_refs": group_refs,
+                "bullets": [],
+            })
+        elif section == "project":
+            projects.append({
+                "name": title,
+                "role": organization,
+                "context": context,
+                "start_date": period,
+                "end_date": None,
+                "technologies": [],
+                "evidence_ids": primary_ids,
+                "provenance_refs": group_refs,
+                "bullets": [],
+            })
+        elif section == "education":
+            education.append({
+                "institution": title,
+                "degree": organization,
+                "field": None,
+                "start_date": period,
+                "end_date": None,
+                "details": primary_texts + ([context] if context else []),
+                "provenance_refs": group_refs,
+            })
+        elif section == "honor":
+            honors.append({
+                "name": title,
+                "issuer": organization,
+                "date": period,
+                "details": "；".join(primary_texts + ([context] if context else [])),
+                "provenance_refs": group_refs,
+            })
+    target_data = payload.get("target_context")
+    headline = target_data.get("role") if isinstance(target_data, Mapping) and target_data.get("role") else payload.get("role") or payload.get("role_title") or ""
+    return {
+        "contact": {key: values[key] for key in ("name", "email", "phone", "location", "links") if key in values},
+        "headline": str(headline),
+        "summary": summary or values.get("summary", []),
+        "skills": skills,
+        "experience": experience,
+        "projects": projects,
+        "education": education,
+        "honors": honors,
+        "metadata_evidence_ids": sorted(metadata_ids),
+        "provenance_refs": refs_for(sorted(metadata_ids)),
+    }
+
 class Pipeline:
     """Compose existing domain functions without reproducing their policy rules."""
 
@@ -1716,6 +2698,302 @@ class Pipeline:
 
     def _adapter(self, source: Path) -> MarkdownCareerV1Adapter:
         return self._adapter_factory(source)
+    def discover_source_structure(
+        self,
+        source: str | Path,
+        *,
+        output: str | Path | None = None,
+    ) -> Any:
+        source_map = _source_map_from_root(source)
+        return _write_stage_ir(source_map, output, source)
+
+    def validate_source_map(
+        self,
+        source: str | Path,
+        source_map: Mapping[str, Any] | Any,
+        *,
+        output: str | Path | None = None,
+    ) -> Any:
+        from .validation import revalidate_source_map
+
+        if isinstance(source_map, Mapping):
+            source_map = _ir_unwrap(source_map, "source_map", "source-map")
+        validated = revalidate_source_map(source_map, source)
+        return _write_stage_ir(validated, output, source)
+
+    def validate_role_input(
+        self,
+        value: Mapping[str, Any] | Any,
+        *,
+        source: str | Path | None = None,
+        output: str | Path | None = None,
+    ) -> Any:
+        if not isinstance(value, Mapping):
+            raise PipelineError("validate-role-input input must be a JSON object")
+        validated = _validate_ir_with_sources(value, source, "normalized-role-input")
+        return _write_stage_ir(validated, output, source)
+
+    def validate_evidence_input(
+        self,
+        value: Mapping[str, Any] | Any,
+        *,
+        source: str | Path | None = None,
+        output: str | Path | None = None,
+    ) -> Any:
+        if "materialize_extractive" in value:
+            materialized = _materialize_extractive(value, source)
+            return _write_stage_ir(materialized, output, source)
+        validated = _validate_ir_with_sources(value, source, "normalized-evidence-input")
+        return _write_stage_ir(validated, output, source)
+
+    def approve_claims(
+        self,
+        value: Mapping[str, Any] | Any,
+        *,
+        source: str | Path | None = None,
+        output: str | Path | None = None,
+    ) -> Any:
+        from .validation import approve_claims as approve_claims_ir
+
+        if not isinstance(value, Mapping):
+            raise PipelineError("approve-claims input must be a JSON object")
+        evidence = _validate_ir_with_sources(value, source, "normalized-evidence-input")
+        reviews: Any = (
+            value.get("review_decisions")
+            or value.get("reviews")
+            or value.get("review_decision")
+        )
+        if reviews is None:
+            raise PipelineError("approve-claims input requires review_decisions")
+        approved = approve_claims_ir(
+            evidence,
+            reviews,
+            approved_safe_claims=value.get("approved_safe_claims"),
+            user_confirmations=value.get("user_confirmations"),
+        )
+        return _write_stage_ir(approved, output, source)
+
+    def generate_from_ir(
+        self,
+        value: Mapping[str, Any] | Any,
+        *,
+        source: str | Path | None = None,
+        output_root: str | Path | None = None,
+        output: str | Path | None = None,
+        include_extended_profile: bool | None = None,
+    ) -> PipelineResult:
+        """Compose variants using only immutable approved claim text."""
+
+        from .ir import ApprovedClaimsIR
+        from .validation import (
+            approve_claims as approve_claims_ir,
+            check_provenance_closure,
+            lock_approved_claims,
+            revalidate_evidence_input,
+        )
+        from .models import (
+            JdCompleteness,
+            OutputMode,
+            TargetBasis,
+            TargetContext,
+        )
+
+        if not isinstance(value, Mapping):
+            raise PipelineError("generate-from-ir input must be a JSON object")
+        payload = dict(value)
+        approved_payload = _ir_unwrap(
+            payload,
+            "approved_claims",
+            "approved_claims_ir",
+            "approved-claims",
+        )
+        submitted: ApprovedClaimsIR = ApprovedClaimsIR.model_validate(approved_payload)
+        request_data = payload.get("request")
+        if not isinstance(request_data, Mapping):
+            request_data = {}
+        source_root = source or payload.get("source_root") or request_data.get("source_root")
+        root = output_root or payload.get("output_root") or request_data.get("output_root")
+        if source_root is None or root is None:
+            raise PipelineError("generate-from-ir requires source_root and output_root metadata")
+        source_path, destination_root = validate_output_root(source_root, root)
+        source_map_payload = payload.get("source_map") or payload.get("source_map_ir")
+        evidence_payload = payload.get("evidence_input") or payload.get("normalized_evidence_input")
+        if not isinstance(source_map_payload, Mapping) or not isinstance(evidence_payload, Mapping):
+            raise PipelineError("generate-from-ir requires source_map and normalized evidence input")
+        source_map = _ir_unwrap(source_map_payload, "source_map", "source-map")
+        evidence = revalidate_evidence_input(
+            _ir_unwrap(evidence_payload, "evidence_input", "normalized-evidence-input"),
+            source_map,
+            source_path,
+        )
+        required_approval_inputs = ("review_decisions", "approved_safe_claims", "user_confirmations")
+        missing_approval_inputs = [key for key in required_approval_inputs if key not in payload]
+        if missing_approval_inputs:
+            raise PipelineError(
+                f"generate-from-ir requires approval inputs: {missing_approval_inputs}"
+            )
+        recomputed = approve_claims_ir(
+            evidence,
+            payload["review_decisions"],
+            approved_safe_claims=payload["approved_safe_claims"],
+            user_confirmations=payload["user_confirmations"],
+        )
+        canonical_submitted = json.dumps(
+            submitted.model_dump(mode="json"),
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        canonical_recomputed = json.dumps(
+            recomputed.model_dump(mode="json"),
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        if canonical_submitted != canonical_recomputed:
+            raise PipelineError("submitted approved_claims do not equal deterministic approval output")
+        approved = lock_approved_claims(recomputed)
+        closure = check_provenance_closure(
+            approved,
+            evidence,
+            payload["review_decisions"],
+            [claim.claim_id for claim in approved.claims],
+        )
+        if not closure["closed"]:
+            raise PipelineError(
+                f"approved claim provenance is not closed: {closure['missing']}"
+            )
+        claims = list(approved.claims)
+        records = _approved_claim_evidence_records(approved, evidence)
+        mode_value = payload.get("output_mode") or request_data.get("output_mode") or OutputMode.TARGETED_APPLICATION.value
+        locale = str(payload.get("language") or request_data.get("language") or "zh-CN")
+        template = str(payload.get("template") or request_data.get("template") or "ats-simple")
+        extended = (
+            include_extended_profile
+            if include_extended_profile is not None
+            else bool(payload.get("include_extended_profile", request_data.get("include_extended_profile", False)))
+        )
+        target_data = payload.get("target_context") or request_data.get("target_context")
+        if isinstance(target_data, Mapping):
+            target = TargetContext.model_validate(target_data)
+        else:
+            target = TargetContext(
+                target_basis=(
+                    TargetBasis.COMPANY_ROLE_FAMILY
+                    if payload.get("role") or request_data.get("role")
+                    else TargetBasis.INSUFFICIENT_TARGET
+                ),
+                company=payload.get("company") or request_data.get("company"),
+                role=payload.get("role") or request_data.get("role") or payload.get("role_title"),
+                jd_completeness=JdCompleteness.UNAVAILABLE,
+            )
+        profile = _minimal_generation_profile(claims, payload, records)
+        requirements = payload.get("requirements") or ()
+        mappings = payload.get("mappings") or ()
+        specs = (_RECRUITER_ONE_PAGE, _TECHNICAL_TWO_PAGE) + (
+            (_EXTENDED_THREE_PAGE,) if extended else ()
+        )
+        run_dir = create_run_directory(destination_root, target.company, target.role)
+        artifacts: list[Path] = []
+        variant_manifest: list[dict[str, Any]] = []
+        variant_summaries: dict[str, dict[str, Any]] = {}
+        for spec in specs:
+            document = build_resume_document(
+                profile,
+                target,
+                records,
+                mappings,
+                requirements,
+                mode=mode_value,
+                locale=locale,
+                variant=spec.variant,
+                target_pages=spec.target_pages,
+                minimum_pages=1,
+                template=template,
+            )
+            names = _variant_artifact_names(spec)
+            pdf_result = render_with_compaction(
+                document,
+                run_dir / names["pdf"],
+                inspection_config=_inspection_for_document(document),
+                template=template,
+                preview_path=run_dir / names["preview"],
+                compact=lambda current, report, attempt, current_spec=spec: _compact_overflowing_variant(
+                    current, report, attempt, current_spec
+                ),
+                max_attempts=5,
+                margin_mm=12.0,
+            )
+            final_document = pdf_result.document
+            visible_claim_ids = _visible_claim_ids(final_document)
+            provenance = build_provenance(records, visible_claim_ids, mode=mode_value)
+            audit = audit_resume(
+                final_document,
+                records,
+                mappings,
+                requirements,
+                provenance,
+                mode=mode_value,
+            )
+            artifacts.extend(
+                [
+                    write_json(run_dir / names["document"], final_document),
+                    write_json(run_dir / names["provenance"], provenance),
+                    write_json(run_dir / names["validation"], audit),
+                    write_text(run_dir / names["audit"], _audit_markdown(audit, target)),
+                    write_text(run_dir / names["markdown"], render_targeted_markdown(final_document)),
+                    write_text(run_dir / names["ats_text"], render_ats_text(final_document)),
+                    write_text(run_dir / names["html"], render_html(final_document, template)),
+                    Path(pdf_result.pdf_path),
+                    *(Path(path) for path in pdf_result.preview_paths),
+                ]
+            )
+            pdf_validation = pdf_result.validation
+            pdf_success = bool(pdf_validation is not None and pdf_validation.success)
+            variant_key = spec.variant.value
+            variant_summaries[variant_key] = {
+                "audit_success": audit.success,
+                "pdf_success": pdf_success,
+                "pages": pdf_validation.pages if pdf_validation is not None else None,
+                "visible_claims": len(visible_claim_ids),
+            }
+            variant_manifest.append(
+                {
+                    "variant": variant_key,
+                    "base_name": spec.base_name,
+                    "target_pages": spec.target_pages,
+                    "actual_pages": pdf_validation.pages if pdf_validation is not None else None,
+                    "underfilled": len(visible_claim_ids) < spec.target_pages * 6,
+                    "visible_claims": len(visible_claim_ids),
+                    "audit_success": audit.success,
+                    "pdf_success": pdf_success,
+                    "artifacts": {key: item for key, item in names.items() if key != "preview"},
+                    "previews": [Path(path).name for path in pdf_result.preview_paths],
+                }
+            )
+        manifest_path = write_json(
+            run_dir / "resume-variants.json",
+            {"schema_version": 1, "variants": variant_manifest},
+        )
+        artifacts.append(manifest_path)
+        for path in artifacts:
+            if path.exists():
+                path.chmod(0o600)
+        result = PipelineResult(
+            "generate-from-ir",
+            run_dir,
+            tuple(dict.fromkeys(artifacts)),
+            {
+                "resume_variants": str(manifest_path),
+                "variants": variant_summaries,
+                "approved_claims": len(claims),
+                "source_root": str(source_path),
+            },
+        )
+        if output is not None:
+            write_json(output, result.model_dump(mode="json"))
+        return result
+
 
     def list_companies(self, source: str | Path) -> list[CompanyRef]:
         return self._adapter(Path(source)).list_companies()
@@ -2235,15 +3513,21 @@ class Pipeline:
         *,
         max_pages: int = 2,
         expected_name: str = "",
+        document: str | Path | None = None,
     ) -> PipelineResult:
         path = Path(pdf).resolve(strict=True)
-        report = inspect_pdf_file(
-            path,
-            InspectionConfig(
+        if document is not None:
+            from .models import ResumeDocument
+
+            document_path = Path(document).resolve(strict=True)
+            resume_document = ResumeDocument.model_validate(read_json(document_path))
+            config = _inspection_for_document(resume_document)
+        else:
+            config = InspectionConfig(
                 target_pages=max_pages,
                 expected_name=expected_name,
-            ),
-        )
+            )
+        report = inspect_pdf_file(path, config)
         return PipelineResult(
             "inspect-pdf",
             path.parent,
@@ -2433,6 +3717,65 @@ class Pipeline:
 
 def generate(request: RunRequest | Mapping[str, Any]) -> PipelineResult:
     return Pipeline().generate(request)
+def discover_source_structure(
+    source: str | Path,
+    *,
+    output: str | Path | None = None,
+) -> Any:
+    return Pipeline().discover_source_structure(source, output=output)
+
+
+def validate_source_map(
+    source: str | Path,
+    source_map: Mapping[str, Any] | Any,
+    *,
+    output: str | Path | None = None,
+) -> Any:
+    return Pipeline().validate_source_map(source, source_map, output=output)
+
+
+def validate_role_input(
+    value: Mapping[str, Any] | Any,
+    *,
+    source: str | Path | None = None,
+    output: str | Path | None = None,
+) -> Any:
+    return Pipeline().validate_role_input(value, source=source, output=output)
+
+
+def validate_evidence_input(
+    value: Mapping[str, Any] | Any,
+    *,
+    source: str | Path | None = None,
+    output: str | Path | None = None,
+) -> Any:
+    return Pipeline().validate_evidence_input(value, source=source, output=output)
+
+
+def approve_claims(
+    value: Mapping[str, Any] | Any,
+    *,
+    source: str | Path | None = None,
+    output: str | Path | None = None,
+) -> Any:
+    return Pipeline().approve_claims(value, source=source, output=output)
+
+
+def generate_from_ir(
+    value: Mapping[str, Any] | Any,
+    *,
+    source: str | Path | None = None,
+    output_root: str | Path | None = None,
+    output: str | Path | None = None,
+    include_extended_profile: bool | None = None,
+) -> PipelineResult:
+    return Pipeline().generate_from_ir(
+        value,
+        source=source,
+        output_root=output_root,
+        output=output,
+        include_extended_profile=include_extended_profile,
+    )
 
 
 def analyze_role(request: RunRequest | Mapping[str, Any]) -> PipelineResult:
@@ -2456,11 +3799,13 @@ def inspect_pdf(
     *,
     max_pages: int = 2,
     expected_name: str = "",
+    document: str | Path | None = None,
 ) -> PipelineResult:
     return Pipeline().inspect_pdf(
         pdf,
         max_pages=max_pages,
         expected_name=expected_name,
+        document=document,
     )
 
 

@@ -2,11 +2,13 @@ from __future__ import annotations
 
 from hashlib import sha256
 import json
+import os
 from pathlib import Path
 import re
 import stat
 import subprocess
 import sys
+import tarfile
 import zipfile
 
 import pymupdf
@@ -467,11 +469,20 @@ def test_installable_package_tree_contains_no_fixture_or_real_career_data() -> N
     assert b"outside-secret.md" not in packaged_bytes
 
 
-def test_curated_skill_archive_includes_readme_and_excludes_workspaces(
+def test_curated_skill_archive_uses_canonical_plugin_layout_without_links(
     tmp_path: Path,
 ) -> None:
     project_root = Path(__file__).resolve().parents[1]
+    canonical_root = project_root / "skills/china-targeted-resume"
+    canonical_skill = canonical_root / "SKILL.md"
     archive_path = tmp_path / "china-targeted-resume.skill"
+
+    assert canonical_skill.is_file()
+    assert (canonical_root / "references/source-adapter.md").is_file()
+    assert not (project_root / "SKILL.md").exists()
+    assert not (project_root / "references").exists()
+    assert not any(path.is_symlink() for path in canonical_root.rglob("*"))
+
     subprocess.run(
         [
             sys.executable,
@@ -486,15 +497,174 @@ def test_curated_skill_archive_includes_readme_and_excludes_workspaces(
 
     prefix = f"{project_root.name}/"
     with zipfile.ZipFile(archive_path) as archive:
-        names = set(archive.namelist())
+        infos = archive.infolist()
+        names = {item.filename for item in infos}
         readme = archive.read(prefix + "README.md").decode("utf-8")
+        archived_skill = archive.read(prefix + "SKILL.md")
 
-    assert prefix + "SKILL.md" in names
+    assert archived_skill == canonical_skill.read_bytes()
+    assert sum(name.endswith("/SKILL.md") for name in names) == 1
     assert prefix + "README.md" in names
+    assert prefix + "references/source-adapter.md" in names
+    assert prefix + "schemas/source-map.schema.json" in names
+    assert prefix + "schemas/approved-claims.schema.json" in names
     assert "## Tutorial: generate from a complete current JD" in readme
     assert "uv run china-targeted-resume generate" in readme
+    assert all(not stat.S_ISLNK(item.external_attr >> 16) for item in infos)
     assert not any(
         blocked in name
         for name in names
-        for blocked in ("/tests/", "/evals/", "-workspace/")
+        for blocked in (
+            "/tests/",
+            "/evals/",
+            "-workspace/",
+            "/.agents/",
+            "/.claude/",
+            "/skills/",
+        )
     )
+
+
+def test_clean_wheel_install_and_sdist_run_ir_commands_with_packaged_schemas(
+    tmp_path: Path,
+) -> None:
+    project_root = Path(__file__).resolve().parents[1]
+    distribution_directory = tmp_path / "distributions"
+    distribution_directory.mkdir()
+    subprocess.run(
+        ["uv", "build", "--out-dir", str(distribution_directory)],
+        cwd=project_root,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    wheels = list(distribution_directory.glob("*.whl"))
+    sdists = list(distribution_directory.glob("*.tar.gz"))
+    assert len(wheels) == 1
+    assert len(sdists) == 1
+
+    schema_members = (
+        "approved-claims.schema.json",
+        "normalized-evidence-input.schema.json",
+        "normalized-role-input.schema.json",
+        "review-decision.schema.json",
+        "source-map.schema.json",
+    )
+    with zipfile.ZipFile(wheels[0]) as wheel:
+        wheel_names = set(wheel.namelist())
+    assert all(
+        f"china_targeted_resume/schemas/{name}" in wheel_names
+        for name in schema_members
+    )
+    assert not any(name.endswith("/SKILL.md") for name in wheel_names)
+
+    with tarfile.open(sdists[0], "r:gz") as sdist:
+        sdist_names = set(sdist.getnames())
+    canonical_skill_suffix = "/skills/china-targeted-resume/SKILL.md"
+    assert sum(name.endswith(canonical_skill_suffix) for name in sdist_names) == 1
+    assert any(
+        name.endswith(
+            "/skills/china-targeted-resume/references/source-adapter.md"
+        )
+        for name in sdist_names
+    )
+    assert not any(
+        name.endswith("/SKILL.md")
+        and not name.endswith(canonical_skill_suffix)
+        for name in sdist_names
+    )
+
+    site_packages = tmp_path / "site-packages"
+    subprocess.run(
+        [
+            "uv",
+            "pip",
+            "install",
+            "--target",
+            str(site_packages),
+            "--no-deps",
+            str(wheels[0]),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    environment = os.environ.copy()
+    environment["PYTHONPATH"] = str(site_packages)
+    environment["PYTHONDONTWRITEBYTECODE"] = "1"
+    environment["PYTHONNOUSERSITE"] = "1"
+    probe = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            (
+                "import json, china_targeted_resume; "
+                "from china_targeted_resume.validation import SCHEMA_NAMES, load_schema; "
+                "print(json.dumps({'package_file': china_targeted_resume.__file__, "
+                "'schema_names': [name for name in SCHEMA_NAMES if load_schema(name)]}))"
+            ),
+        ],
+        cwd=tmp_path,
+        env=environment,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    probe_result = json.loads(probe.stdout)
+    assert Path(probe_result["package_file"]).resolve().is_relative_to(
+        site_packages.resolve()
+    )
+    assert probe_result["schema_names"] == [
+        "source-map",
+        "normalized-role-input",
+        "normalized-evidence-input",
+        "review-decision",
+        "approved-claims",
+    ]
+
+    source_root = tmp_path / "source"
+    source_root.mkdir(mode=0o700)
+    (source_root / "profile.md").write_text(
+        "# Synthetic Profile\n\n- Built a synthetic service.\n",
+        encoding="utf-8",
+    )
+    source_map_path = tmp_path / "source-map.json"
+    discovered = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "china_targeted_resume",
+            "discover-source-structure",
+            "--source",
+            str(source_root),
+            "--output",
+            str(source_map_path),
+        ],
+        cwd=tmp_path,
+        env=environment,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    discovered_payload = json.loads(discovered.stdout)
+    assert discovered_payload["operation"] == "discover-source-structure"
+
+    validated = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "china_targeted_resume",
+            "validate-source-map",
+            "--source",
+            str(source_root),
+            "--input",
+            str(source_map_path),
+        ],
+        cwd=tmp_path,
+        env=environment,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert json.loads(validated.stdout)["operation"] == "validate-source-map"

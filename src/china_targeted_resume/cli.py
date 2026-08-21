@@ -16,6 +16,19 @@ from .pipeline import Pipeline, PipelineError, PipelineResult, SelectionRequired
 
 def _path(value: str) -> Path:
     return Path(value).expanduser()
+def _add_ir_json_io(parser: argparse.ArgumentParser, *, output: bool = True) -> None:
+    parser.add_argument(
+        "--input",
+        type=_path,
+        help="Private JSON input file; omit to read one JSON object from stdin.",
+    )
+    if output:
+        parser.add_argument(
+            "--output",
+            type=_path,
+            help="Private JSON output file; omit to emit JSON on stdout.",
+        )
+
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -74,8 +87,106 @@ def _parser() -> argparse.ArgumentParser:
     inspect = commands.add_parser("inspect-pdf", help="Inspect an existing PDF independently.")
     inspect.add_argument("--pdf", type=_path, required=True, help="PDF path.")
     inspect.add_argument("--max-pages", type=int, default=2, choices=range(1, 7), metavar="1-6", help="Maximum pages to inspect (default: 2).")
+    inspect.add_argument("--document", type=_path, help="Optional ResumeDocument JSON for authoritative inspection expectations.")
     inspect.add_argument("--expected-name", default="", help="Optional candidate name expected in extracted PDF text.")
+    discover = commands.add_parser(
+        "discover-source-structure",
+        help="Discover fence-aware source structure and emit a metadata-only source map.",
+    )
+    discover.add_argument(
+        "--source",
+        "--source-root",
+        dest="source",
+        type=_path,
+        required=True,
+        help="Read-only Markdown source root.",
+    )
+    discover.add_argument(
+        "--output",
+        type=_path,
+        help="Private source-map JSON output file; otherwise emit JSON on stdout.",
+    )
+
+    source_map = commands.add_parser(
+        "validate-source-map",
+        help="Re-open source and validate source-map identity, spans, quotes, and policy.",
+    )
+    source_map.add_argument(
+        "--source",
+        "--source-root",
+        dest="source",
+        type=_path,
+        required=True,
+        help="Read-only Markdown source root.",
+    )
+    _add_ir_json_io(source_map)
+
+    role_input = commands.add_parser(
+        "validate-role-input",
+        help="Validate normalized role-input IR and role/company/roadmap separation.",
+    )
+    _add_ir_json_io(role_input)
+    role_input.add_argument("--source", "--source-root", dest="source", type=_path, required=True, help="Read-only Markdown source root.")
+
+    evidence_input = commands.add_parser(
+        "validate-evidence-input",
+        help="Validate normalized evidence-input IR and policy eligibility boundary.",
+    )
+    _add_ir_json_io(evidence_input)
+    evidence_input.add_argument("--source", "--source-root", dest="source", type=_path, required=True, help="Read-only Markdown source root.")
+
+    approve = commands.add_parser(
+        "approve-claims",
+        help="Aggregate independent reviews and lock approved claim text.",
+    )
+    _add_ir_json_io(approve)
+    approve.add_argument("--source", "--source-root", dest="source", type=_path, required=True, help="Read-only Markdown source root.")
+
+    generate_ir = commands.add_parser(
+        "generate-from-ir",
+        help="Compose and render variants exclusively from locked approved claims.",
+    )
+    _add_ir_json_io(generate_ir)
+    generate_ir.add_argument(
+        "--source",
+        "--source-root",
+        dest="source",
+        type=_path,
+        help="Read-only source root when absent from JSON metadata.",
+    )
+    generate_ir.add_argument(
+        "--output-root",
+        "--output-dir",
+        dest="output_root",
+        type=_path,
+        help="Private output root when absent from JSON metadata.",
+    )
+    generate_ir.add_argument(
+        "--include-extended-profile",
+        action="store_true",
+        default=None,
+        help="Opt in to the extended three-page profile.",
+    )
     return parser
+def _input_payload(path: Path | None) -> dict[str, Any]:
+    raw: Any = read_json(path) if path is not None else json.load(sys.stdin)
+    if not isinstance(raw, dict):
+        raise ValueError("JSON input must be an object")
+    return raw
+
+
+def _result_payload(operation: str, result: Any) -> dict[str, Any]:
+    if isinstance(result, PipelineResult):
+        payload = result.model_dump(mode="json")
+        payload.setdefault("operation", operation)
+        return payload
+    value = jsonable(result)
+    if isinstance(value, dict):
+        payload = dict(value)
+        payload.setdefault("operation", operation)
+        return payload
+    return {"operation": operation, "result": value}
+
 
 
 def _request_from_generate(args: argparse.Namespace) -> RunRequest:
@@ -111,6 +222,37 @@ def _dispatch(args: argparse.Namespace, pipeline: Pipeline) -> PipelineResult | 
     if args.command == "export-roadmap-handoff":
         severities = [value.strip() for value in args.severity.split(",") if value.strip()]
         return pipeline.export_roadmap_handoff(args.role, args.output, severities)
+    if args.command == "discover-source-structure":
+        return pipeline.discover_source_structure(args.source, output=args.output)
+    if args.command == "validate-source-map":
+        return pipeline.validate_source_map(
+            args.source,
+            _input_payload(args.input),
+            output=args.output,
+        )
+    if args.command == "validate-role-input":
+        return pipeline.validate_role_input(_input_payload(args.input), source=args.source, output=args.output)
+    if args.command == "validate-evidence-input":
+        return pipeline.validate_evidence_input(_input_payload(args.input), source=args.source, output=args.output)
+    if args.command == "approve-claims":
+        return pipeline.approve_claims(_input_payload(args.input), source=args.source, output=args.output)
+    if args.command == "generate-from-ir":
+        payload = _input_payload(args.input)
+        output_root = args.output_root
+        stage_output = args.output
+        # For this command --output is also a convenient output-root spelling.
+        # Existing JSON-file use remains available through --output-root plus
+        # --output, while a directory-looking path is treated as the root.
+        if output_root is None and stage_output is not None:
+            if stage_output.exists() and stage_output.is_dir() or stage_output.suffix == "":
+                output_root, stage_output = stage_output, None
+        return pipeline.generate_from_ir(
+            payload,
+            source=args.source,
+            output_root=output_root,
+            output=stage_output,
+            include_extended_profile=args.include_extended_profile,
+        )
     if args.command == "build-evidence-map":
         return pipeline.build_evidence_map(args.run)
     if args.command == "validate-content":
@@ -118,15 +260,22 @@ def _dispatch(args: argparse.Namespace, pipeline: Pipeline) -> PipelineResult | 
     if args.command == "render":
         return pipeline.render(args.document, args.output)
     if args.command == "inspect-pdf":
+        if args.document is not None:
+            return pipeline.inspect_pdf(
+                args.pdf,
+                max_pages=args.max_pages,
+                expected_name=args.expected_name,
+                document=args.document,
+            )
         return pipeline.inspect_pdf(args.pdf, max_pages=args.max_pages, expected_name=args.expected_name)
     raise PipelineError(f"unsupported command: {args.command}")
-
-
+ 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = _parser()
     try:
-        result = _dispatch(parser.parse_args(argv), Pipeline())
-        payload = result.model_dump(mode="json") if isinstance(result, PipelineResult) else jsonable(result)
+        args = parser.parse_args(argv)
+        result = _dispatch(args, Pipeline())
+        payload = _result_payload(args.command, result)
         print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
         return 0
     except SelectionRequired as exc:

@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.local/china-targeted-resume/confirmation.schema.json",
+  "title": "confirmation",
+  "oneOf": [
+    {"$ref": "#/$defs/request"},
+    {"$ref": "#/$defs/receipt"}
+  ],
+  "$defs": {
+    "reason": {
+      "type": "string",
+      "enum": [
+        "p2_disclosure",
+        "candidate_unresolved_questions",
+        "reviewer_confirmation"
+      ]
+    },
+    "request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "run_id",
+        "evidence_id",
+        "claim_digest",
+        "disclosure_audience",
+        "disclosure_purpose",
+        "output_mode",
+        "reason_codes"
+      ],
+      "properties": {
+        "schema_version": {"const": 1},
+        "run_id": {"type": "string", "minLength": 1, "maxLength": 128},
+        "evidence_id": {"type": "string", "minLength": 1, "maxLength": 240},
+        "claim_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+        "disclosure_audience": {"enum": ["recruiter", "hiring_team"]},
+        "disclosure_purpose": {"type": "string", "minLength": 1},
+        "output_mode": {"const": "targeted_application"},
+        "reason_codes": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/reason"}
+        }
+      }
+    },
+    "receipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "run_id",
+        "evidence_id",
+        "claim_digest",
+        "disclosure_audience",
+        "disclosure_purpose",
+        "output_mode",
+        "reason_codes",
+        "confirmed",
+        "confirmed_at",
+        "confirmed_by",
+        "nonce"
+      ],
+      "properties": {
+        "schema_version": {"const": 1},
+        "run_id": {"type": "string", "minLength": 1, "maxLength": 128},
+        "evidence_id": {"type": "string", "minLength": 1, "maxLength": 240},
+        "claim_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+        "disclosure_audience": {"enum": ["recruiter", "hiring_team"]},
+        "disclosure_purpose": {"type": "string", "minLength": 1},
+        "output_mode": {"const": "targeted_application"},
+        "reason_codes": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/reason"}
+        },
+        "confirmed": {"const": true},
+        "confirmed_at": {"type": "string", "format": "date-time"},
+        "confirmed_by": {"const": "interactive_user"},
+        "nonce": {"type": "string", "minLength": 1, "maxLength": 240}
+      }
+    }
+  }
+}

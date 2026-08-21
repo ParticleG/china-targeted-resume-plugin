@@ -548,6 +548,7 @@ def build_resume_document(
     assigned: set[str] = set()
     experience = _group_experience(candidate_profile, ranked, assigned, refs)
     projects = _group_projects(candidate_profile, ranked, assigned, refs)
+    assigned.update(str(value) for value in _items(_get(candidate_profile, "metadata_evidence_ids", ())))
     unassigned = [record for record in ranked if str(_get(record, "evidence_id")) not in assigned]
     if unassigned:
         projects.append({"name": "Selected Evidence", "role": None, "context": None, "start_date": None, "end_date": None, "technologies": [], "bullets": [_bullet(record, ranked.index(record), len(ranked)) for record in unassigned]})

@@ -1,0 +1,372 @@
+{
+  "$defs": {
+    "ContributionQualifier": {
+      "additionalProperties": false,
+      "properties": {
+        "actor": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Actor"
+        },
+        "scope": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Scope"
+        },
+        "text": {
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "text"
+      ],
+      "title": "ContributionQualifier",
+      "type": "object"
+    },
+    "DisclosureAudience": {
+      "enum": [
+        "recruiter",
+        "hiring_team",
+        "public",
+        "internal"
+      ],
+      "title": "DisclosureAudience",
+      "type": "string"
+    },
+    "DisclosureDecision": {
+      "enum": [
+        "allowed",
+        "denied",
+        "needs_confirmation"
+      ],
+      "title": "DisclosureDecision",
+      "type": "string"
+    },
+    "MetricQualifier": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Name"
+        },
+        "qualifier": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Qualifier"
+        },
+        "text": {
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        },
+        "unit": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unit"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Value"
+        }
+      },
+      "required": [
+        "text"
+      ],
+      "title": "MetricQualifier",
+      "type": "object"
+    },
+    "ReviewDecision": {
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "review_kind": {
+                "const": "privacy"
+              }
+            },
+            "required": [
+              "review_kind"
+            ]
+          },
+          "then": {
+            "properties": {
+              "disclosure_decision": {
+                "$ref": "#/$defs/DisclosureDecision"
+              }
+            },
+            "required": [
+              "disclosure_decision"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "disclosure_decision": {
+                "const": "allowed"
+              },
+              "review_kind": {
+                "const": "privacy"
+              }
+            },
+            "required": [
+              "disclosure_decision",
+              "review_kind"
+            ]
+          },
+          "then": {
+            "properties": {
+              "disclosure_audience": {
+                "$ref": "#/$defs/DisclosureAudience"
+              },
+              "disclosure_purpose": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "disclosure_audience",
+              "disclosure_purpose"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "user_confirmed": {
+                "const": true
+              }
+            },
+            "required": [
+              "user_confirmed"
+            ]
+          },
+          "then": {
+            "properties": {
+              "user_confirmation_required": {
+                "const": true
+              }
+            },
+            "required": [
+              "user_confirmation_required"
+            ]
+          }
+        }
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "approved_safe_claim": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Approved Safe Claim"
+        },
+        "contribution_qualifiers": {
+          "items": {
+            "$ref": "#/$defs/ContributionQualifier"
+          },
+          "title": "Contribution Qualifiers",
+          "type": "array"
+        },
+        "disclosure_audience": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DisclosureAudience"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "disclosure_decision": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DisclosureDecision"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "disclosure_purpose": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Disclosure Purpose"
+        },
+        "evidence_id": {
+          "maxLength": 240,
+          "minLength": 1,
+          "title": "Evidence Id",
+          "type": "string"
+        },
+        "metric_qualifiers": {
+          "items": {
+            "$ref": "#/$defs/MetricQualifier"
+          },
+          "title": "Metric Qualifiers",
+          "type": "array"
+        },
+        "outcome": {
+          "$ref": "#/$defs/ReviewOutcome"
+        },
+        "questions": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Questions",
+          "type": "array"
+        },
+        "reasoning": {
+          "minLength": 1,
+          "title": "Reasoning",
+          "type": "string"
+        },
+        "review_id": {
+          "maxLength": 240,
+          "minLength": 1,
+          "title": "Review Id",
+          "type": "string"
+        },
+        "review_kind": {
+          "$ref": "#/$defs/ReviewKind"
+        },
+        "reviewer_id": {
+          "maxLength": 240,
+          "minLength": 1,
+          "title": "Reviewer Id",
+          "type": "string"
+        },
+        "user_confirmation_required": {
+          "default": false,
+          "title": "User Confirmation Required",
+          "type": "boolean"
+        },
+        "user_confirmed": {
+          "default": false,
+          "title": "User Confirmed",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "review_id",
+        "evidence_id",
+        "reviewer_id",
+        "review_kind",
+        "outcome",
+        "reasoning"
+      ],
+      "title": "ReviewDecision",
+      "type": "object"
+    },
+    "ReviewKind": {
+      "enum": [
+        "evidence",
+        "contribution_metric",
+        "privacy",
+        "requirement"
+      ],
+      "title": "ReviewKind",
+      "type": "string"
+    },
+    "ReviewOutcome": {
+      "enum": [
+        "approve",
+        "reject",
+        "disagree",
+        "needs_confirmation"
+      ],
+      "title": "ReviewOutcome",
+      "type": "string"
+    }
+  },
+  "$id": "https://schemas.local/china-targeted-resume/review-decision.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "decisions": {
+      "items": {
+        "$ref": "#/$defs/ReviewDecision"
+      },
+      "title": "Decisions",
+      "type": "array"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    }
+  },
+  "title": "review-decision",
+  "type": "object"
+}
