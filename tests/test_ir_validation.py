@@ -27,6 +27,7 @@ from china_targeted_resume.ir import (
 )
 from china_targeted_resume.markdown_structure import parse_markdown_bytes
 from china_targeted_resume.policy import parse_policy_markers
+from china_targeted_resume.pipeline import Pipeline
 from china_targeted_resume.validation import (
     IRValidationError,
     approve_claims,
@@ -55,6 +56,23 @@ def test_ir_omission_matches_policy_parser_defaults() -> None:
 
     assert fact.value == FactPolicy.F5.value
     assert disclosure.value == DisclosurePolicy.P3.value
+
+
+def test_discovered_source_map_revalidates_after_private_block_filtering(tmp_path) -> None:
+    path = tmp_path / "profile.md"
+    path.write_text(
+        "# Profile F1 P0\n\n"
+        "- Public claim F1 P0\n"
+        "- Private claim F6 P3\n",
+        encoding="utf-8",
+    )
+
+    source_map = Pipeline().discover_source_structure(tmp_path)
+
+    assert len(source_map.sections) == 1
+    assert len(source_map.blocks) == 1
+    assert source_map.sections[0].block_ids == [source_map.blocks[0].block_id]
+    assert revalidate_source_map(source_map, tmp_path) == source_map
 
 
 def test_revalidation_rejects_forged_f1_p0_flags(tmp_path) -> None:

@@ -240,6 +240,30 @@ class MarkdownBlock:
         return not self.flags.excluded_from_evidence
 
 
+def source_map_block_is_safe(block: MarkdownBlock) -> bool:
+    """Return whether block metadata may enter a persistent source map."""
+    flags = block.flags
+    if (
+        flags.inside_fence
+        or flags.inside_blockquote
+        or flags.inside_html
+        or flags.inside_example
+        or flags.inside_template
+        or flags.inside_quoted
+        or flags.negative_instruction
+        or flags.secret_path
+        or flags.secret_content
+        or flags.malformed
+    ):
+        return False
+    return not (
+        block.has_explicit_fact_policy
+        and block.effective_fact_policy is FactState.F6
+        or block.has_explicit_disclosure_policy
+        and block.effective_disclosure_policy is DisclosureLevel.P3
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class MarkdownSection:
     """A heading section; ``blocks`` contains directly owned blocks only."""

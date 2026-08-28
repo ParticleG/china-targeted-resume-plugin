@@ -33,6 +33,16 @@ def test_required_and_preferred_language_is_preserved_despite_repetition() -> No
     assert keyword_review_signals(jd, minimum_count=2)
 
 
+def test_required_section_does_not_make_interest_statement_a_hard_gate() -> None:
+    [requirement] = parse_requirements(
+        "# 任职要求\n- 对基础设施平台和智能运维有兴趣，愿意深入业务场景。\n",
+        source_id="fixture-jd",
+    )
+
+    assert requirement.necessity is RequirementNecessity.REQUIRED
+    assert requirement.hard_gate is False
+
+
 def test_explicit_requirements_retain_verbatim_multiline_quote_and_span() -> None:
     jd = """# Responsibilities
 - Operate the queue service

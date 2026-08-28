@@ -122,6 +122,44 @@ def test_generate_cli_constructs_extended_profile_request(tmp_path) -> None:
     assert "target_pages" not in RunRequest.model_fields
 
 
+def test_generate_cli_loads_application_constraints_file(tmp_path) -> None:
+    constraints_path = tmp_path / "constraints.json"
+    constraints_path.write_text(
+        json.dumps(
+            [
+                {
+                    "constraint_id": "CON-EXPERIENCE",
+                    "kind": "experience",
+                    "hard_gate": True,
+                    "status": "unsatisfied",
+                    "candidate_value": "4 years",
+                    "required_value": "5-10 years",
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+    args = _parser().parse_args(
+        [
+            "generate",
+            "--source",
+            str(tmp_path / "source"),
+            "--jd-text",
+            "Current role text.",
+            "--application-constraints-file",
+            str(constraints_path),
+            "--output",
+            str(tmp_path / "output"),
+        ]
+    )
+
+    request = _request_from_generate(args)
+
+    [constraint] = request.application_constraints
+    assert constraint["constraint_id"] == "CON-EXPERIENCE"
+    assert constraint["status"] == "unsatisfied"
+
+
 def test_generate_help_has_no_legacy_pages_option(capsys) -> None:
     with pytest.raises(SystemExit) as exit_info:
         _parser().parse_args(["generate", "--help"])

@@ -40,6 +40,86 @@ _PERSONAL_FORBIDDEN_SOURCE_TYPES = {
     "growth_roadmap",
     "roadmap",
 }
+KNOWN_SKILLS = (
+    "Megatron-LM", "Distributed systems", "Incident response", "TypeScript",
+    "JavaScript", "PostgreSQL", "Kubernetes", "TensorFlow", "DeepSpeed",
+    "Prometheus", "Networking", "PyTorch", "Python", "Docker", "Linux",
+    "Grafana", "MySQL", "Redis", "Kafka", "gRPC", "ROS 2", "CUDA", "FSDP",
+    "DDP", "GPU", "HTTP", "API", "CI/CD", "C++", "C#", "Rust", "Java",
+    "JAX", "Go", "Terraform", "Coder", "Docker Swarm", "Flask",
+    "SQLAlchemy", "CMake", "vcpkg", "Electron", "Vue", "tree-sitter",
+    "CTags", "WebSocket", "NETCONF", "Spring Boot", "Spring Cloud", "Gin",
+    "Kratos", "OpenTelemetry", "OpenSearch", "Loki", "eBPF",
+)
+_STRICT_COMPOUND_SKILLS = tuple(
+    skill
+    for skill in KNOWN_SKILLS
+    if skill
+    not in {
+        "Distributed systems",
+        "Incident response",
+        "Networking",
+        "GPU",
+        "HTTP",
+        "API",
+        "CI/CD",
+        "Coder",
+    }
+)
+_SKILL_PATTERNS = {
+    skill: re.compile(
+        rf"(?<![A-Za-z0-9]){re.escape(skill)}(?![A-Za-z0-9])",
+        re.I,
+    )
+    for skill in KNOWN_SKILLS
+}
+_TECH_STACK_SECTION = re.compile(r"(?:technology stack|tech stack|技术栈)", re.I)
+_COVERAGE_INVENTORY = re.compile(
+    r"(?:覆盖|支持|适配|面向)[^。；;\n]{0,160}(?:语言|languages?)|"
+    r"\b(?:supports?|covers?|targets?)\b[^.;\n]{0,160}\blanguages?\b",
+    re.I,
+)
+_DIRECT_SKILL_USE = (
+    r"(?:使用|采用|基于|以|用|using|built with|implemented (?:in|with)|written in)"
+    r"[^。；;\n]{{0,48}}{skill}|"
+    r"{skill}[^。；;\n]{{0,36}}"
+    r"(?:开发|实现|编写|服务|组件|模块|脚本|接口|API|development|service|module|script)"
+)
+
+
+def _skill_pattern(skill: str) -> re.Pattern[str]:
+    return _SKILL_PATTERNS.get(skill) or re.compile(
+        rf"(?<![A-Za-z0-9]){re.escape(skill)}(?![A-Za-z0-9])",
+        re.I,
+    )
+
+
+def text_mentions_skill(text: str, skill: str) -> bool:
+    return _skill_pattern(skill).search(text) is not None
+
+
+def technology_terms(text: str) -> tuple[str, ...]:
+    return tuple(
+        skill for skill in _STRICT_COMPOUND_SKILLS if text_mentions_skill(text, skill)
+    )
+
+
+def claim_supports_skill(claim: str, skill: str, *, section: str = "") -> bool:
+    """Reject inventory/coverage mentions that do not demonstrate using a skill."""
+    pattern = _skill_pattern(skill)
+    if pattern.search(claim) is None:
+        return False
+    if re.search(
+        _DIRECT_SKILL_USE.format(skill=f"(?:{pattern.pattern})"),
+        claim,
+        re.I,
+    ):
+        return True
+    if _COVERAGE_INVENTORY.search(claim):
+        return False
+    if _TECH_STACK_SECTION.search(section):
+        return False
+    return True
 
 
 def _is_nonpersonal_source(source: Any) -> bool:
@@ -51,6 +131,7 @@ def _is_nonpersonal_source(source: Any) -> bool:
         or ("company" in normalized and "research" in normalized)
         or ("growth" in normalized and "roadmap" in normalized)
     )
+
 _STATE_ORDER = {
     RoleMatchState.DIRECT_EVIDENCE: 0,
     RoleMatchState.TRANSFERABLE_EXPERIENCE: 1,
@@ -82,6 +163,37 @@ def _state(value: Any) -> RoleMatchState:
     if isinstance(value, RoleMatchState):
         return value
     return RoleMatchState(_value(value))
+
+
+
+
+def _direct_technology_coverage(
+    requirement: Any,
+    records: Sequence[EvidenceRecord],
+) -> tuple[bool, tuple[str, ...]]:
+    requirement_text = str(_get(requirement, "text", ""))
+    required = technology_terms(requirement_text)
+    if len(required) < 2:
+        return True, ()
+    supported = {
+        skill
+        for skill in required
+        if any(
+            claim_supports_skill(
+                record.safe_claim,
+                skill,
+                section=str(record.source.section or ""),
+            )
+            for record in records
+        )
+    }
+    alternatives = (
+        len(required) == 2
+        and re.search(r"\b(?:or)\b|或|\s/\s", requirement_text, re.I) is not None
+    )
+    minimum = 1 if alternatives else len(required)
+    missing = tuple(skill for skill in required if skill not in supported)
+    return len(supported) >= minimum, missing
 
 
 def detect_metric_qualifiers(text: str) -> dict[str, Any]:
@@ -197,21 +309,46 @@ def _mapping_for(requirement: Any, records: Sequence[EvidenceRecord]) -> Evidenc
     best = min((_state(record.match_state) for record in linked), key=lambda state: _STATE_ORDER[state])
     selected = [record for record in linked if _state(record.match_state) == best]
     risks: list[str] = []
+    missing_evidence: list[str] = []
+    selection_reason = f"Selected the strongest eligible linked state: {best.value}."
     if best == RoleMatchState.DIRECT_EVIDENCE:
-        risks.append("Validate contribution scope and all metric qualifiers in interview.")
+        covered, missing_skills = _direct_technology_coverage(requirement, selected)
+        if not covered:
+            best = RoleMatchState.TRANSFERABLE_EXPERIENCE
+            selected = [
+                record
+                for record in linked
+                if _state(record.match_state)
+                in {
+                    RoleMatchState.DIRECT_EVIDENCE,
+                    RoleMatchState.TRANSFERABLE_EXPERIENCE,
+                }
+            ]
+            selection_reason = (
+                "Downgraded to 可迁移经验 because direct evidence does not cover "
+                "enough named technologies in the compound requirement."
+            )
+            missing_evidence.append(
+                "Add direct evidence for more named technologies; missing: "
+                + ", ".join(missing_skills)
+                + "."
+            )
+        else:
+            risks.append("Validate contribution scope and all metric qualifiers in interview.")
     if any(record.freshness.dynamic for record in selected):
         risks.append("Dynamic evidence requires current verification.")
     usable_ids = [record.evidence_id for record in selected if not record.freshness.stale]
     if not usable_ids:
         best = RoleMatchState.PENDING_CONFIRMATION
+        missing_evidence = ["Current eligible evidence is required."]
     return EvidenceMapping(
         requirement_id=requirement_id,
         match_state=best,
         evidence_ids=usable_ids,
-        selection_reason=f"Selected the strongest eligible linked state: {best.value}.",
+        selection_reason=selection_reason,
         resume_priority=float(_get(requirement, "confidence", 0.0) or 0.0),
         interview_risks=risks,
-        missing_evidence=[] if usable_ids else ["Current eligible evidence is required."],
+        missing_evidence=missing_evidence,
     )
 
 

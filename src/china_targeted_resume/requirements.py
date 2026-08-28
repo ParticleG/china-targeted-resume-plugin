@@ -16,6 +16,11 @@ _REQUIRED = re.compile(
     r"what we(?:'re| are) looking for|need(?:ed)?|shall)\b|"
     r"(?:必须|必需|必要条件|任职要求|任职资格|职位要求|基本要求|最低要求|硬性要求|必备条件)", re.I
 )
+_HARD_GATE = re.compile(
+    r"\b(?:must|required|mandatory|minimum|shall)\b|"
+    r"(?:必须|必需|必要条件|最低要求|硬性要求|必备条件)",
+    re.I,
+)
 _PREFERRED = re.compile(
     r"\b(?:preferred|desirable|nice[ -]to[ -]have|plus|bonus)\b|"
     r"(?:优先|加分项?|更佳|最好|具备.*者优先)", re.I
@@ -113,7 +118,7 @@ def _necessity(text: str, section: str | None) -> tuple[str, bool]:
     if section == "preferred" or _PREFERRED.search(text):
         return "preferred", False
     if section == "required" or _REQUIRED.search(text):
-        return "required", True
+        return "required", bool(_HARD_GATE.search(text))
     if section == "responsibility":
         return "responsibility", False
     return "unknown", False

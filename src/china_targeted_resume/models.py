@@ -182,6 +182,13 @@ class JdInput(CanonicalModel):
     text: str | None = None
     url: HttpUrl | None = None
     file: Path | None = None
+    complete: bool | None = None
+
+    @model_validator(mode="after")
+    def completeness_requires_input(self) -> JdInput:
+        if self.complete is not None and not any((self.text, self.url, self.file)):
+            raise ValueError("JD completeness requires JD text, file, or URL input")
+        return self
 
 
 class RoleRequest(CanonicalModel):

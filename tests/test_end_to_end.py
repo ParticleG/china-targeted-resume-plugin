@@ -275,6 +275,22 @@ def test_tier_a_complete_jd_full_run_direct_mapping_pdf_and_source_isolation(syn
     _remove_intentional_traversal_probe(synthetic_db_copy)
     source_before = _source_snapshot(synthetic_db_copy)
     output_root = tmp_path / "tier-a-output"
+    constraints_path = tmp_path / "tier-a-constraints.json"
+    constraints_path.write_text(
+        json.dumps(
+            [
+                {
+                    "constraint_id": "CON-EXPERIENCE",
+                    "kind": "experience",
+                    "hard_gate": True,
+                    "status": "unsatisfied",
+                    "candidate_value": "4 years",
+                    "required_value": "5-10 years",
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
     jd = """# Current complete job description / 当前完整职位描述
 ## Source metadata
 - Published: 2026-07-10
@@ -292,6 +308,7 @@ def test_tier_a_complete_jd_full_run_direct_mapping_pdf_and_source_isolation(syn
             "--company", "acme-cloudworks",
             "--role", "acme-cloudworks-platform-engineer",
             "--jd-text", jd, "--template", "ats-simple",
+            "--application-constraints-file", str(constraints_path),
             "--output", str(output_root),
         ],
         capsys,
@@ -300,6 +317,8 @@ def test_tier_a_complete_jd_full_run_direct_mapping_pdf_and_source_isolation(syn
     _assert_full_contract(run_dir, handoff=False)
     target = _json(run_dir / "target-context.json")
     mappings = _json(run_dir / "evidence-map.json")
+    constraints = _json(run_dir / "application-constraints.json")
+    recommendation = _json(run_dir / "application-recommendation.json")
     assert target["target_basis"] == "exact-current-jd"
     assert target["jd_completeness"] == "complete"
     assert target["jd_source_date"] == "2026-07-10"
@@ -309,6 +328,8 @@ def test_tier_a_complete_jd_full_run_direct_mapping_pdf_and_source_isolation(syn
     assert target["explicit_requirement_coverage"] is not None
     assert target["coverage_calculation"]["total_explicit_requirements"] == 3
     assert mappings and all(mapping["match_state"] == "已有直接证据" for mapping in mappings)
+    assert constraints[0]["status"] == "unsatisfied"
+    assert recommendation["decision"] == "deprioritize"
     assert all(mapping["evidence_ids"] for mapping in mappings)
     assert [mapping["resume_priority"] for mapping in mappings] == sorted(
         (mapping["resume_priority"] for mapping in mappings), reverse=True
@@ -331,6 +352,48 @@ def test_tier_a_complete_jd_full_run_direct_mapping_pdf_and_source_isolation(syn
     assert _source_snapshot(synthetic_db_copy) == source_before
     assert not run_dir.is_relative_to(synthetic_db_copy)
 
+
+
+def test_incomplete_jd_cli_keeps_tier_b_and_parses_explicit_requirements(
+    synthetic_db_copy,
+    tmp_path,
+    capsys,
+) -> None:
+    _remove_intentional_traversal_probe(synthetic_db_copy)
+    jd = """# Partial job description excerpt
+## Requirements
+- Must operate Kubernetes services.
+- Required Python automation and API integration.
+- Prometheus experience is preferred.
+"""
+    run_dir, _ = _run_cli(
+        [
+            "generate",
+            "--source",
+            str(synthetic_db_copy),
+            "--company",
+            "acme-cloudworks",
+            "--role",
+            "acme-cloudworks-platform-engineer",
+            "--jd-text",
+            jd,
+            "--jd-incomplete",
+            "--output",
+            str(tmp_path / "tier-b-incomplete-jd-output"),
+        ],
+        capsys,
+    )
+
+    target = _json(run_dir / "target-context.json")
+    requirements = _json(run_dir / "requirements.json")
+
+    assert target["target_basis"] == "exact-role-partial-evidence"
+    assert target["jd_completeness"] == "partial"
+    assert target["explicit_requirement_coverage"] is None
+    assert target["coverage_calculation"] is None
+    assert len(requirements) == 3
+    assert all(item["origin"] == "explicit" for item in requirements)
+    assert any("Kubernetes" in item["text"] for item in requirements)
 
 def test_tier_b_partial_role_full_run_null_coverage_limitations_and_explicit_handoff(synthetic_db_copy, tmp_path) -> None:
     _remove_intentional_traversal_probe(synthetic_db_copy)

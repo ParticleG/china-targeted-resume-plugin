@@ -5,7 +5,12 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import ValidationError
 
-from china_targeted_resume.evidence import build_evidence_map, build_evidence_record, detect_metric_qualifiers
+from china_targeted_resume.evidence import (
+    build_evidence_map,
+    build_evidence_record,
+    claim_supports_skill,
+    detect_metric_qualifiers,
+)
 from china_targeted_resume.models import EvidenceMapping, RoleMatchState, SourceRef
 from china_targeted_resume.provenance import build_provenance
 
@@ -110,6 +115,55 @@ def test_mapping_selects_strongest_eligible_state_and_keeps_all_requirements(
     assert len(mappings[0].evidence_ids) == 1
     assert mappings[1].match_state is RoleMatchState.PENDING_CONFIRMATION
     assert mappings[1].missing_evidence
+
+
+def test_language_coverage_inventory_does_not_prove_language_use() -> None:
+    claim = (
+        "开发标准 completion provider，覆盖 TypeScript、JavaScript、Python、"
+        "Java、C、C++、Go、Rust 等语言。"
+    )
+
+    assert claim_supports_skill(claim, "Go", section="个人工作") is False
+    assert claim_supports_skill(claim, "Java", section="个人工作") is False
+    assert claim_supports_skill(
+        "使用 TypeScript 实现 VS Code completion provider。",
+        "TypeScript",
+        section="个人工作",
+    ) is True
+
+
+def test_composite_technology_requirement_needs_each_named_direct_anchor(
+    requirement_factory,
+    candidate_factory,
+) -> None:
+    text = "熟悉 Kubernetes、Docker、Prometheus、Grafana 等云原生和监控技术。"
+    requirement = requirement_factory(
+        requirement_id="REQ-COMPOSITE",
+        text=text,
+        verbatim_quote=text,
+    )
+    docker = candidate_factory(
+        candidate_id="candidate-docker",
+        requirement_ids=[requirement.requirement_id],
+        proposed_claim="使用 Docker 部署平台服务。",
+        match_state=RoleMatchState.DIRECT_EVIDENCE,
+    )
+    kubernetes = candidate_factory(
+        candidate_id="candidate-kubernetes",
+        requirement_ids=[requirement.requirement_id],
+        proposed_claim="使用 Kubernetes 编排平台服务。",
+        match_state=RoleMatchState.DIRECT_EVIDENCE,
+    )
+
+    [mapping] = build_evidence_map(
+        [requirement],
+        [docker, kubernetes],
+        mode="targeted_application",
+    )
+
+    assert mapping.match_state is RoleMatchState.TRANSFERABLE_EXPERIENCE
+    assert mapping.evidence_ids
+    assert any("Prometheus, Grafana" in item for item in mapping.missing_evidence)
 
 
 def test_provenance_is_emitted_only_for_visible_policy_eligible_claim(candidate_factory) -> None:

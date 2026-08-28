@@ -53,6 +53,12 @@ def _parser() -> argparse.ArgumentParser:
     jd.add_argument("--jd-text", help="Offline JD text supplied directly.")
     jd.add_argument("--jd-file", type=_path, help="Offline UTF-8 JD file (maximum 2 MiB).")
     jd.add_argument("--jd-url", help="Explicit HTTPS JD URL to fetch with size/time bounds.")
+    generate.add_argument("--jd-incomplete", action="store_true", help="Treat supplied JD text, file, or URL as an incomplete excerpt and keep Tier B.")
+    generate.add_argument(
+        "--application-constraints-file",
+        type=_path,
+        help="Private JSON array of independently assessed application constraints.",
+    )
     generate.add_argument("--mode", choices=[item.value for item in OutputMode], default=OutputMode.TARGETED_APPLICATION.value, help="Disclosure/output context (default: targeted_application).")
     generate.add_argument("--include-extended-profile", action="store_true", help="Also generate the opt-in extended three-page profile.")
     generate.add_argument("--template", choices=("ats-simple", "human-readable"), default="ats-simple", help="Local rendering template (default: ats-simple).")
@@ -189,12 +195,27 @@ def _result_payload(operation: str, result: Any) -> dict[str, Any]:
 
 
 
+def _application_constraints(path: Path | None) -> list[dict[str, Any]]:
+    if path is None:
+        return []
+    payload = read_json(path)
+    if not isinstance(payload, list) or not all(isinstance(item, dict) for item in payload):
+        raise PipelineError("application constraints file must contain one JSON array of objects")
+    return [dict(item) for item in payload]
+
+
 def _request_from_generate(args: argparse.Namespace) -> RunRequest:
     return RunRequest(
         source_root=args.source,
         company_ref=args.company,
         role_ref=args.role,
-        jd=JdInput(text=args.jd_text, file=args.jd_file, url=args.jd_url),
+        jd=JdInput(
+            text=args.jd_text,
+            file=args.jd_file,
+            url=args.jd_url,
+            complete=False if args.jd_incomplete else None,
+        ),
+        application_constraints=_application_constraints(args.application_constraints_file),
         output_mode=args.mode,
         language=args.language,
         include_extended_profile=args.include_extended_profile,

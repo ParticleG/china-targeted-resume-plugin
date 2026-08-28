@@ -28,14 +28,21 @@ from .composition import (
     render_targeted_markdown,
 )
 from .dossier import DOSSIER_FILES, refresh_role as refresh_role_sections, render_dossier_files
-from .evidence import build_evidence_map as build_evidence_mappings, build_evidence_record, refresh_match as refresh_evidence_match
+from .evidence import (
+    KNOWN_SKILLS,
+    build_evidence_map as build_evidence_mappings,
+    build_evidence_record,
+    claim_supports_skill,
+    refresh_match as refresh_evidence_match,
+    text_mentions_skill,
+)
 from .gaps import build_gaps
 from .io import create_run_directory, jsonable, read_json, secure_directory, validate_output_root, write_json, write_text
-from .markdown_structure import SourceDocument
+from .markdown_structure import SourceDocument, source_map_block_is_safe
 from .models import (
-    CompanyRef, JdInput, OutputMode, Requirement, ResumeVariant,
-    RoleDossierIR, RoleRef, RoleRequest, RunRequest, SourceRef, TargetBasis,
-    TargetContext,
+    ApplicationConstraint, CompanyRef, JdInput, OutputMode, Requirement,
+    ResumeVariant, RoleDossierIR, RoleRef, RoleRequest, RunRequest, SourceRef,
+    TargetBasis, TargetContext,
 )
 from .provenance import build_confirmation_questions, build_provenance
 from .roadmap_handoff import export_roadmap_handoff as make_roadmap_handoff
@@ -46,16 +53,6 @@ from .rendering.inspect import InspectionConfig, inspect_pdf as inspect_pdf_file
 from .rendering.pdf import render_with_compaction
 
 _MAX_JD_BYTES = 2 * 1024 * 1024
-_KNOWN_SKILLS = (
-    "Megatron-LM", "Distributed systems", "Incident response", "TypeScript",
-    "JavaScript", "PostgreSQL", "Kubernetes", "TensorFlow", "DeepSpeed",
-    "Prometheus", "Networking", "PyTorch", "Python", "Docker", "Linux",
-    "Grafana", "MySQL", "Redis", "gRPC", "ROS 2", "CUDA", "FSDP",
-    "DDP", "GPU", "HTTP", "API", "CI/CD", "C++", "C#", "Rust", "Java",
-    "JAX", "Go", "Terraform", "Coder", "Docker Swarm", "Flask",
-    "SQLAlchemy", "CMake", "vcpkg", "Electron", "Vue", "tree-sitter",
-    "CTags", "WebSocket", "NETCONF",
-)
 
 
 
@@ -331,6 +328,25 @@ def _with_jd_metadata(
 def _persistable_dossier(dossier: RoleDossierIR) -> RoleDossierIR:
     """Keep refresh state without persisting retrieved source-section bodies."""
     return dossier.model_copy(update={"evidence_candidates": [], "evidence_records": []})
+
+
+def _application_constraints(
+    parsed: Sequence[ApplicationConstraint],
+    requested: Sequence[Mapping[str, Any]] | Mapping[str, Any],
+) -> list[ApplicationConstraint]:
+    if isinstance(requested, Mapping):
+        raw = requested.get("constraints", ())
+    else:
+        raw = requested
+    values = list(raw)
+    if not values:
+        return list(parsed)
+    return [
+        item
+        if isinstance(item, ApplicationConstraint)
+        else ApplicationConstraint.model_validate(item)
+        for item in values
+    ]
 
 
 def _replace_owned_section(text: str, section: str, replacement: str) -> str:
@@ -1353,17 +1369,24 @@ def _candidate_profile(
             record for record in records
             if record.evidence_id in mapping.evidence_ids
         ]
-        evidence_text = " ".join(
-            record.safe_claim for record in linked_records
-        ).casefold()
-        requirement_text = requirement.text.casefold()
+        requirement_text = requirement.text
         candidates = [
             *requirement.keywords,
-            *(skill for skill in _KNOWN_SKILLS if skill.casefold() in requirement_text),
+            *(skill for skill in KNOWN_SKILLS if text_mentions_skill(requirement_text, skill)),
         ]
         for candidate in candidates:
             skill = str(candidate).strip()
-            if not skill or skill.casefold() not in evidence_text:
+            supporting_records = [
+                record
+                for record in linked_records
+                if skill
+                and claim_supports_skill(
+                    record.safe_claim,
+                    skill,
+                    section=str(record.source.section or ""),
+                )
+            ]
+            if not supporting_records:
                 continue
             key = skill.casefold()
             entry = skill_index.setdefault(key, {
@@ -1372,17 +1395,21 @@ def _candidate_profile(
                 "source_refs": [],
             })
             entry["evidence_ids"].extend(
-                record.evidence_id for record in linked_records
+                record.evidence_id for record in supporting_records
             )
             entry["source_refs"].extend(
                 str(record.source.path)
-                for record in linked_records
+                for record in supporting_records
                 if record.source.path
             )
     for record in records:
         claim = record.safe_claim.casefold()
-        for skill in _KNOWN_SKILLS:
-            if skill.casefold() not in claim:
+        for skill in KNOWN_SKILLS:
+            if not claim_supports_skill(
+                record.safe_claim,
+                skill,
+                section=str(record.source.section or ""),
+            ):
                 continue
             key = skill.casefold()
             entry = skill_index.setdefault(
@@ -1923,60 +1950,6 @@ def _ir_flags(value: Any) -> dict[str, Any]:
                 break
     return result
 
-def _source_map_block_is_safe(block: Any) -> bool:
-    flags = _ir_mapping(
-        _ir_value(block, "structural_flags", None)
-        or _ir_value(block, "flags", None)
-        or block
-    )
-    if any(
-        bool(flags.get(name))
-        for name in (
-            "inside_fence",
-            "inside_blockquote",
-            "inside_block_quote",
-            "inside_html",
-            "inside_example",
-            "inside_template",
-            "inside_quoted",
-            "negative_instruction",
-            "secret_path",
-            "secret_content",
-            "malformed",
-        )
-    ):
-        return False
-    fact = _ir_value(
-        block,
-        "effective_fact_policy",
-        _ir_value(block, "effective_fact_state", None),
-    )
-    disclosure = _ir_value(
-        block,
-        "effective_disclosure_policy",
-        _ir_value(block, "effective_disclosure", None),
-    )
-    fact_explicit = bool(
-        _ir_value(
-            block,
-            "has_explicit_fact_policy",
-            _ir_value(block, "fact_policy_explicit", False),
-        )
-    )
-    disclosure_explicit = bool(
-        _ir_value(
-            block,
-            "has_explicit_disclosure_policy",
-            _ir_value(block, "disclosure_policy_explicit", False),
-        )
-    )
-    return not (
-        (fact_explicit and getattr(fact, "value", fact) == "F6")
-        or (
-            disclosure_explicit
-            and getattr(disclosure, "value", disclosure) == "P3"
-        )
-    )
 
 
 
@@ -2098,7 +2071,7 @@ def _source_map_from_root(root: str | Path) -> Any:
             )
         section_block_ids: dict[str, list[str]] = {value: [] for value in section_ids.values()}
         for block in raw_blocks:
-            if not _source_map_block_is_safe(block):
+            if not source_map_block_is_safe(block):
                 continue
             block_id = block_ids[id(block)]
             section = _ir_value(block, "section", None)
@@ -3017,7 +2990,11 @@ class Pipeline:
             role_request,
             jd_text=jd_text or None,
             hiring_evidence=hiring_evidence,
-            jd_complete=bool(jd_text.strip()),
+            jd_complete=(
+                run_request.jd.complete
+                if run_request.jd.complete is not None
+                else bool(jd_text.strip())
+            ),
             source_date=parsed_jd.published_date if parsed_jd else None,
         )
         target = _with_jd_metadata(target, parsed_jd, jd_origin)
@@ -3030,7 +3007,10 @@ class Pipeline:
             else _tier_b_requirements(adapter, company, role)
         )
         competencies = build_role_competencies(requirements)
-        constraints = list(parsed_jd.application_constraints) if parsed_jd else []
+        constraints = _application_constraints(
+            parsed_jd.application_constraints if parsed_jd else (),
+            run_request.application_constraints,
+        )
         candidates = _load_verified_candidates(
             adapter,
             adapter.search_evidence(requirements),
@@ -3598,7 +3578,11 @@ class Pipeline:
             role_request,
             jd_text=jd_text or None,
             hiring_evidence=hiring_evidence,
-            jd_complete=bool(jd_text.strip()),
+            jd_complete=(
+                request.jd.complete
+                if request.jd.complete is not None
+                else bool(jd_text.strip())
+            ),
             source_date=parsed.published_date if parsed else None,
         )
         target = _with_jd_metadata(target, parsed, jd_origin)
@@ -3608,7 +3592,10 @@ class Pipeline:
             else _tier_b_requirements(adapter, company, role_ref)
         )
         competencies = build_role_competencies(requirements)
-        constraints = list(parsed.application_constraints) if parsed else []
+        constraints = _application_constraints(
+            parsed.application_constraints if parsed else (),
+            request.application_constraints,
+        )
         candidates = _load_verified_candidates(
             adapter, adapter.search_evidence(requirements)
         )

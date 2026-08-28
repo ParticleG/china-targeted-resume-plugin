@@ -44,7 +44,7 @@ from .ir import (
     SourceSpan,
     StructuralFlags,
 )
-from .markdown_structure import parse_markdown_bytes
+from .markdown_structure import parse_markdown_bytes, source_map_block_is_safe
 
 
 SCHEMA_NAMES = (
@@ -522,7 +522,10 @@ def _validate_source_structure(context: _ParsedSourceContext) -> None:
             raise IRValidationError(f"section {section.section_id!r}: heading ancestry differs from parsed source")
         if section.duplicate_index != int(parsed_section.occurrence):
             raise IRValidationError(f"section {section.section_id!r}: duplicate heading occurrence differs from parsed source")
-        if tuple(section.block_ids) != tuple(item.identity for item in parsed_section.blocks):
+        expected_block_ids = tuple(
+            item.identity for item in parsed_section.blocks if source_map_block_is_safe(item)
+        )
+        if tuple(section.block_ids) != expected_block_ids:
             raise IRValidationError(f"section {section.section_id!r}: block identity list differs from parsed source")
         _compare_context_flags(
             context,
