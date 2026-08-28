@@ -87,6 +87,7 @@ li {
   margin-block-end: var(--space-1);
   break-inside: avoid-page;
   page-break-inside: avoid;
+  text-wrap: pretty;
 }
 
 address {
