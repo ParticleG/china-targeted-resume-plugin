@@ -44,7 +44,6 @@ _REQUIRED_PATHS = (
     "personal-data/meta/fact-boundaries.md",
     "company-research/README.md",
     "role-research/README.md",
-    "role-research/skill-assisted-job-match-workflow.md",
     "growth-roadmap/README.md",
 )
 _ROLE_DOSSIER_FILES = (

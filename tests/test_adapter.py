@@ -38,6 +38,17 @@ def _remove_documented_traversal(root: Path) -> None:
     )
 
 
+
+def test_discovery_does_not_require_removed_legacy_workflow(
+    synthetic_db_copy: Path,
+) -> None:
+    _remove_documented_traversal(synthetic_db_copy)
+    (synthetic_db_copy / "role-research" / "skill-assisted-job-match-workflow.md").unlink()
+
+    adapter = MarkdownCareerV1Adapter(synthetic_db_copy)
+
+    assert adapter.list_companies()
+
 def test_discovery_rejects_documented_traversal_before_indexing(synthetic_db_copy: Path) -> None:
     adapter = MarkdownCareerV1Adapter()
 

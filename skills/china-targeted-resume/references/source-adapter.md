@@ -11,8 +11,10 @@ For `markdown-career-v1`, validate these navigation and policy documents before 
 - root `README.md` or `README.zh-CN.md`;
 - `personal-data/README.md` and `personal-data/meta/fact-boundaries.md`;
 - `company-research/README.md`;
-- `role-research/README.md` and `role-research/skill-assisted-job-match-workflow.md`;
+- `role-research/README.md`;
 - `growth-roadmap/README.md`.
+
+`role-research/skill-assisted-job-match-workflow.md` is a legacy human workflow, not a runtime authority. If a repository README links to a removed historical version, inspect it through version control when needed; do not mutate the source root merely to satisfy adapter discovery.
 
 Useful navigation seeds include profile basics, career timeline, capabilities, verifiable achievements, work summaries, and public links. They locate owners; they do not replace owning evidence documents.
 
