@@ -10,7 +10,7 @@ For each item include source role/gap refs, source requirement, exact canonical 
 
 ## Downstream contract
 
-An independent roadmap Skill may add prerequisite order, stage goals, official resource URLs, role-scenario practice projects, concrete deliverables, estimated effort, observable pass criteria, validation methods, and the intended personal-data owner.
+The independent `china-resume-growth-roadmap` Skill may add prerequisite order, stage goals, current official resource URLs, role-scenario practice projects, concrete deliverables, estimated effort, observable pass criteria, validation methods, and the intended personal-data owner.
 
 It must not reinterpret the JD, modify the seven dossier files' ownership, change canonical state, fabricate personal facts, treat a plan/course/time/confidence as evidence, or update `evidence-mapping.md` directly.
 

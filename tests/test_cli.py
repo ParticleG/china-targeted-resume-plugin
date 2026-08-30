@@ -1,16 +1,26 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
 import json
+from io import StringIO
 
 import pytest
 
-from china_targeted_resume.cli import _dispatch, _parser, _request_from_generate, main
+from china_targeted_resume.cli import (
+    _dispatch,
+    _parser,
+    _request_from_generate,
+    _request_from_guided,
+    main,
+)
 from china_targeted_resume.models import (
+    CompanyRef,
     Contact,
     RenderPolicy,
     ResumeDocument,
     ResumeTarget,
     ResumeVariant,
+    RoleRef,
     RunRequest,
     TargetBasis,
 )
@@ -25,10 +35,12 @@ EXPECTED_COMMANDS = {
     "list-companies",
     "list-roles",
     "generate",
+    "guided-generate",
     "analyze-role",
     "refresh-role",
     "refresh-match",
     "export-roadmap-handoff",
+    "write-growth-roadmap",
     "build-evidence-map",
     "validate-content",
     "render",
@@ -66,6 +78,23 @@ def test_list_companies_and_roles_emit_machine_readable_json(synthetic_db_copy, 
     assert roles["operation"] == "list-roles"
     assert roles["count"] == len(roles["roles"]) >= 1
     assert "acme-cloudworks-platform-engineer" in {item["role_id"] for item in roles["roles"]}
+
+def test_conventional_company_research_path_resolves_to_source_root(
+    synthetic_db_copy,
+    capsys,
+) -> None:
+    _remove_intentional_traversal_probe(synthetic_db_copy)
+
+    assert main(
+        [
+            "list-companies",
+            "--source",
+            str(synthetic_db_copy / "company-research"),
+        ]
+    ) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["count"] >= 2
 
 
 def test_cli_rejects_traversal_fixture_without_reading_outside(synthetic_career_db, capsys) -> None:
@@ -119,6 +148,7 @@ def test_generate_cli_constructs_extended_profile_request(tmp_path) -> None:
     request = _request_from_generate(args)
 
     assert request.include_extended_profile is True
+    assert request.template == "adaptive"
     assert "target_pages" not in RunRequest.model_fields
 
 
@@ -128,12 +158,12 @@ def test_generate_cli_loads_application_constraints_file(tmp_path) -> None:
         json.dumps(
             [
                 {
-                    "constraint_id": "CON-EXPERIENCE",
-                    "kind": "experience",
+                    "constraint_id": "CON-LOCATION",
+                    "kind": "location",
                     "hard_gate": True,
                     "status": "unsatisfied",
-                    "candidate_value": "4 years",
-                    "required_value": "5-10 years",
+                    "candidate_value": "Remote only",
+                    "required_value": "Three office days",
                 }
             ]
         ),
@@ -156,8 +186,144 @@ def test_generate_cli_loads_application_constraints_file(tmp_path) -> None:
     request = _request_from_generate(args)
 
     [constraint] = request.application_constraints
-    assert constraint["constraint_id"] == "CON-EXPERIENCE"
+    assert constraint["constraint_id"] == "CON-LOCATION"
     assert constraint["status"] == "unsatisfied"
+
+def test_generate_cli_loads_experience_duration_diagnostics_file(
+    tmp_path,
+) -> None:
+    diagnostics_path = tmp_path / "duration-diagnostics.json"
+    diagnostics_path.write_text(
+        json.dumps(
+            [
+                {
+                    "requirement_id": "REQ-PYTHON-YEARS",
+                    "diagnostic": {
+                        "candidate_scope": "professional Python development",
+                        "required_scope": "professional Python development",
+                        "unit": "years",
+                        "candidate_years": 4,
+                        "required_min_years": 5,
+                        "evidence_refs": ["ev-python-duration"],
+                        "checked_at": "2026-08-30T00:00:00Z",
+                    },
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+    args = _parser().parse_args(
+        [
+            "generate",
+            "--source",
+            str(tmp_path / "source"),
+            "--experience-duration-diagnostics-file",
+            str(diagnostics_path),
+            "--output",
+            str(tmp_path / "output"),
+        ]
+    )
+
+    request = _request_from_generate(args)
+
+    [binding] = request.experience_duration_diagnostics
+    assert binding.requirement_id == "REQ-PYTHON-YEARS"
+    assert binding.diagnostic.evidence_refs == ["ev-python-duration"]
+
+def test_guided_generate_selects_company_and_role_on_private_console(
+    tmp_path,
+) -> None:
+    class DiscoveryPipeline:
+        def list_companies(self, source):
+            return [
+                CompanyRef(company_id="company-a", display_name="Company A"),
+                CompanyRef(company_id="company-b", display_name="Company B"),
+            ]
+
+        def list_roles(self, source, company):
+            assert company == "company-b"
+            return [
+                RoleRef(
+                    role_id="role-b1",
+                    title="Platform Engineer",
+                    company_id="company-b",
+                ),
+                RoleRef(
+                    role_id="role-b2",
+                    title="Infrastructure Engineer",
+                    company_id="company-b",
+                ),
+            ]
+
+    args = _parser().parse_args(
+        [
+            "guided-generate",
+            "--source",
+            str(tmp_path / "source" / "company-research"),
+            "--output",
+            str(tmp_path / "output"),
+        ]
+    )
+    prompts = StringIO()
+
+    request = _request_from_guided(
+        args,
+        DiscoveryPipeline(),
+        input_stream=StringIO("2\n1\n"),
+        prompt_stream=prompts,
+    )
+
+    assert request.company_ref == "company-b"
+    assert request.role_ref == "role-b1"
+    assert request.template == "adaptive"
+    assert "Available company choices" in prompts.getvalue()
+    assert "Available role choices" in prompts.getvalue()
+
+
+@pytest.mark.parametrize(
+    ("selection", "expected_error"),
+    [
+        ("", "company selection is required"),
+        ("not-a-company\n", "invalid company selection"),
+    ],
+)
+def test_guided_generate_selection_errors_keep_stderr_single_json(
+    synthetic_db_copy,
+    tmp_path,
+    monkeypatch,
+    capsys,
+    selection,
+    expected_error,
+) -> None:
+    _remove_intentional_traversal_probe(synthetic_db_copy)
+    prompts = StringIO()
+
+    @contextmanager
+    def fake_console():
+        yield StringIO(selection), prompts
+
+    monkeypatch.setattr(
+        "china_targeted_resume.cli._guided_console",
+        fake_console,
+    )
+
+    status = main(
+        [
+            "guided-generate",
+            "--source",
+            str(synthetic_db_copy / "company-research"),
+            "--output",
+            str(tmp_path / "output"),
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert status == 2
+    assert captured.out == ""
+    assert len(captured.err.splitlines()) == 1
+    error = json.loads(captured.err)
+    assert expected_error in error["error"]
+    assert "Available company choices" in prompts.getvalue()
 
 
 def test_generate_help_has_no_legacy_pages_option(capsys) -> None:

@@ -6,8 +6,13 @@ from collections.abc import Mapping, Sequence
 from enum import Enum
 from typing import Any
 
+from china_targeted_resume.evidence import (
+    NEAR_MATCH_EXPERIENCE_SHORTFALL,
+    assess_experience_duration_near_match,
+)
 from china_targeted_resume.models import (
     ApplicationDecision,
+    ApplicationConstraint,
     ApplicationRecommendation,
     ConstraintStatus,
     EvidenceMapping,
@@ -15,6 +20,7 @@ from china_targeted_resume.models import (
     GapSeverity,
     JdCompleteness,
     NumericDiagnostic,
+    Requirement,
     RoleMatchState,
     TargetBasis,
 )
@@ -35,6 +41,7 @@ def _constraint_status(constraint: Any) -> ConstraintStatus | None:
         return ConstraintStatus(_value(_get(constraint, "status")))
     except (TypeError, ValueError):
         return None
+
 
 
 def _numeric(mappings: Sequence[EvidenceMapping]) -> NumericDiagnostic:
@@ -82,6 +89,8 @@ def recommend_application(
     gaps: Sequence[Any],
     constraints: Sequence[Any],
     *,
+    requirements: Sequence[Any] = (),
+    records: Sequence[Any] = (),
     include_numeric: bool = False,
 ) -> ApplicationRecommendation:
     """Explain a decision using target quality, constraints, evidence, and gaps."""
@@ -89,9 +98,52 @@ def recommend_application(
     canonical_mappings = [
         item if isinstance(item, EvidenceMapping) else EvidenceMapping.model_validate(item) for item in mappings
     ]
+    canonical_requirements = [
+        item
+        if isinstance(item, Requirement)
+        else Requirement.model_validate(item)
+        for item in requirements
+    ]
+    requirement_by_id = {
+        item.requirement_id: item
+        for item in canonical_requirements
+    }
     canonical_gaps = [item if isinstance(item, Gap) else Gap.model_validate(item) for item in gaps]
-    hard_constraints = [item for item in constraints if bool(_get(item, "hard_gate", False))]
-    hard_unsatisfied = [item for item in hard_constraints if _constraint_status(item) == ConstraintStatus.UNSATISFIED]
+    canonical_constraints = [
+        item
+        if isinstance(item, ApplicationConstraint)
+        else ApplicationConstraint.model_validate(item)
+        for item in constraints
+    ]
+    hard_constraints = [
+        item for item in canonical_constraints if item.hard_gate
+    ]
+    hard_unsatisfied = [
+        item
+        for item in hard_constraints
+        if _constraint_status(item) == ConstraintStatus.UNSATISFIED
+    ]
+    non_hard_unsatisfied = [
+        item
+        for item in canonical_constraints
+        if not item.hard_gate
+        and _constraint_status(item) == ConstraintStatus.UNSATISFIED
+    ]
+    near_match_details = {}
+    for mapping in canonical_mappings:
+        requirement = requirement_by_id.get(mapping.requirement_id)
+        if requirement is None:
+            continue
+        detail = assess_experience_duration_near_match(
+            mapping,
+            requirement,
+            records,
+        )
+        if detail is not None:
+            near_match_details[mapping.requirement_id] = (
+                detail,
+                mapping.experience_duration_diagnostic,
+            )
     hard_unknown = [
         item
         for item in hard_constraints
@@ -126,6 +178,16 @@ def recommend_application(
     elif hard_unknown:
         decision = ApplicationDecision.PENDING_INFORMATION
         rationale.append("At least one hard constraint is unknown and must be confirmed independently.")
+    elif non_hard_unsatisfied:
+        decision = ApplicationDecision.APPLY_WITH_RISKS
+        rationale.append(
+            "One or more non-hard application constraints remain unsatisfied; applying is reasonable only with explicit risk disclosure."
+        )
+    elif near_match_details:
+        decision = ApplicationDecision.APPLY_WITH_RISKS
+        rationale.append(
+            "One or more explicit experience-duration requirements are auditable near matches; applying remains a risk decision."
+        )
     elif critical or major:
         decision = ApplicationDecision.APPLY_WITH_RISKS
         rationale.append("Confirmed gaps exist; applying remains a judgment with explicit interview risks.")
@@ -148,6 +210,29 @@ def recommend_application(
         strength = "weak"
     else:
         strength = "unknown"
+    non_hard_ids = [item.constraint_id for item in non_hard_unsatisfied]
+    if non_hard_ids:
+        rationale.append(
+            "Unsatisfied non-hard constraints: " + ", ".join(non_hard_ids) + "."
+        )
+    for requirement_id, (
+        (
+            candidate_years,
+            required_years,
+            shortfall,
+        ),
+        diagnostic,
+    ) in near_match_details.items():
+        if diagnostic is None:
+            continue
+        rationale.append(
+            f"Experience requirement {requirement_id} is an evidence-backed near match: "
+            f"candidate={candidate_years:g} years, required minimum={required_years:g} years, "
+            f"shortfall={shortfall:.1%} (maximum diagnostic shortfall={NEAR_MATCH_EXPERIENCE_SHORTFALL:.0%}); "
+            f"scope={diagnostic.required_scope}; evidence={','.join(diagnostic.evidence_refs)}; "
+            f"checked_at={diagnostic.checked_at.isoformat()}. "
+            "The explicit requirement remains unmet; do not present it as satisfied."
+        )
     rationale.extend(
         [
             f"Hard-constraint readiness: {hard_readiness}.",
@@ -169,6 +254,7 @@ def recommend_application(
         evidence_strength=strength,
         critical_gaps=critical,
         major_gaps=major,
+        near_match_requirements=list(near_match_details),
         pending_information=list(dict.fromkeys(pending)),
         rationale=rationale,
         heuristic=True,

@@ -32,6 +32,7 @@ def _variant_record(
     return {
         "variant": variant,
         "base_name": base_name,
+        "template": "ats-simple" if pages == 1 else "human-readable",
         "target_pages": pages,
         "actual_pages": pages,
         "underfilled": visible_claims < pages * 6,
@@ -110,6 +111,7 @@ def test_resume_variants_schema_is_valid_draft_2020_12() -> None:
         lambda manifest: manifest["variants"][0].update(
             {"variant": "unknown-variant"}
         ),
+        lambda manifest: manifest["variants"][0].update({"template": "adaptive"}),
         lambda manifest: manifest["variants"][1].update({"actual_pages": 1}),
         lambda manifest: manifest["variants"][1].update({"target_pages": 1}),
         lambda manifest: manifest["variants"][1].update({"visible_claims": -1}),
@@ -138,6 +140,7 @@ def test_resume_variants_schema_is_valid_draft_2020_12() -> None:
         "missing-record-key",
         "missing-artifact-key",
         "unknown-variant",
+        "non-concrete-template",
         "wrong-actual-page-count",
         "wrong-target-page-count",
         "invalid-visible-claim-count",

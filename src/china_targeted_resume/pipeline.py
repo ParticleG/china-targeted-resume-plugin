@@ -31,6 +31,7 @@ from .dossier import DOSSIER_FILES, refresh_role as refresh_role_sections, rende
 from .evidence import (
     KNOWN_SKILLS,
     build_evidence_map as build_evidence_mappings,
+    bind_experience_duration_diagnostics,
     build_evidence_record,
     claim_supports_skill,
     refresh_match as refresh_evidence_match,
@@ -41,8 +42,8 @@ from .io import create_run_directory, jsonable, read_json, secure_directory, val
 from .markdown_structure import SourceDocument, source_map_block_is_safe
 from .models import (
     ApplicationConstraint, CompanyRef, JdInput, OutputMode, Requirement,
-    ResumeVariant, RoleDossierIR, RoleRef, RoleRequest, RunRequest, SourceRef,
-    TargetBasis, TargetContext,
+    ResumeVariant, RoleDossierIR, RoleMatchState, RoleRef, RoleRequest,
+    RunRequest, SourceRef, TargetBasis, TargetContext,
 )
 from .provenance import build_confirmation_questions, build_provenance
 from .roadmap_handoff import export_roadmap_handoff as make_roadmap_handoff
@@ -53,6 +54,25 @@ from .rendering.inspect import InspectionConfig, inspect_pdf as inspect_pdf_file
 from .rendering.pdf import render_with_compaction
 
 _MAX_JD_BYTES = 2 * 1024 * 1024
+_CONVENTIONAL_SOURCE_CHILDREN = frozenset(
+    {"company-research", "personal-data", "role-research", "growth-roadmap"}
+)
+
+
+def _career_source_root(source: str | Path) -> Path:
+    candidate = Path(source).expanduser()
+    if (
+        candidate.name in _CONVENTIONAL_SOURCE_CHILDREN
+        and candidate.is_dir()
+        and not candidate.is_symlink()
+    ):
+        parent = candidate.parent
+        if (
+            (parent / "company-research").is_dir()
+            and (parent / "personal-data").is_dir()
+        ):
+            return parent
+    return candidate
 
 
 
@@ -131,6 +151,22 @@ def _requested_variant_specs(
         (*defaults, _EXTENDED_THREE_PAGE)
         if request.include_extended_profile
         else defaults
+    )
+
+def _template_for_variant(
+    requested: str,
+    variant: ResumeVariant,
+) -> str:
+    if requested == "adaptive":
+        return (
+            "ats-simple"
+            if variant is ResumeVariant.RECRUITER_ONE_PAGE
+            else "human-readable"
+        )
+    if requested in {"ats-simple", "human-readable"}:
+        return requested
+    raise PipelineError(
+        "template must be adaptive, ats-simple, or human-readable"
     )
 
 
@@ -403,6 +439,35 @@ def _deduplicate_candidates(candidates: Sequence[Any]) -> list[Any]:
     return list(merged.values())
 
 
+def _experience_duration_fact_index(
+    records: Sequence[Any],
+) -> list[dict[str, Any]]:
+    result: list[dict[str, Any]] = []
+    for record in records:
+        fact = getattr(record, "experience_duration_fact", None)
+        if fact is None:
+            continue
+        source = record.source
+        result.append(
+            {
+                "evidence_id": record.evidence_id,
+                "requirement_ids": list(record.requirement_ids),
+                "source": {
+                    "path": source.path,
+                    "section": source.section,
+                    "source_hash": source.source_hash,
+                },
+                "source_span": (
+                    record.source_span.model_dump(mode="json")
+                    if record.source_span is not None
+                    else None
+                ),
+                "experience_duration_fact": fact.model_dump(mode="json"),
+            }
+        )
+    return result
+
+
 def _mapped_evidence_ids(mappings: Sequence[Any]) -> set[str]:
     return {
         str(evidence_id)
@@ -446,6 +511,14 @@ def _rank_visible_records(
             record
             for record in records
             if (include_unmapped or record.evidence_id in mapped_ids)
+            and (
+                str(getattr(mode, "value", mode)) != OutputMode.TARGETED_APPLICATION.value
+                or record.match_state
+                in {
+                    RoleMatchState.DIRECT_EVIDENCE,
+                    RoleMatchState.TRANSFERABLE_EXPERIENCE,
+                }
+            )
             and resume_claim_is_substantive(record)
         ],
         mappings=mappings,
@@ -618,7 +691,11 @@ def _select_variant_records(
         mappings,
         requirements,
         mode,
-        include_unmapped=True,
+        include_unmapped=(
+            not bool(mappings)
+            or str(getattr(mode, "value", mode))
+            != OutputMode.TARGETED_APPLICATION.value
+        ),
     )
     by_path: dict[str, list[Any]] = {}
     for record in ranked:
@@ -2840,7 +2917,7 @@ class Pipeline:
         records = _approved_claim_evidence_records(approved, evidence)
         mode_value = payload.get("output_mode") or request_data.get("output_mode") or OutputMode.TARGETED_APPLICATION.value
         locale = str(payload.get("language") or request_data.get("language") or "zh-CN")
-        template = str(payload.get("template") or request_data.get("template") or "ats-simple")
+        template = str(payload.get("template") or request_data.get("template") or "adaptive")
         extended = (
             include_extended_profile
             if include_extended_profile is not None
@@ -2871,6 +2948,7 @@ class Pipeline:
         variant_manifest: list[dict[str, Any]] = []
         variant_summaries: dict[str, dict[str, Any]] = {}
         for spec in specs:
+            variant_template = _template_for_variant(template, spec.variant)
             document = build_resume_document(
                 profile,
                 target,
@@ -2882,14 +2960,14 @@ class Pipeline:
                 variant=spec.variant,
                 target_pages=spec.target_pages,
                 minimum_pages=1,
-                template=template,
+                template=variant_template,
             )
             names = _variant_artifact_names(spec)
             pdf_result = render_with_compaction(
                 document,
                 run_dir / names["pdf"],
                 inspection_config=_inspection_for_document(document),
-                template=template,
+                template=variant_template,
                 preview_path=run_dir / names["preview"],
                 compact=lambda current, report, attempt, current_spec=spec: _compact_overflowing_variant(
                     current, report, attempt, current_spec
@@ -2916,7 +2994,7 @@ class Pipeline:
                     write_text(run_dir / names["audit"], _audit_markdown(audit, target)),
                     write_text(run_dir / names["markdown"], render_targeted_markdown(final_document)),
                     write_text(run_dir / names["ats_text"], render_ats_text(final_document)),
-                    write_text(run_dir / names["html"], render_html(final_document, template)),
+                    write_text(run_dir / names["html"], render_html(final_document, variant_template)),
                     Path(pdf_result.pdf_path),
                     *(Path(path) for path in pdf_result.preview_paths),
                 ]
@@ -2934,6 +3012,7 @@ class Pipeline:
                 {
                     "variant": variant_key,
                     "base_name": spec.base_name,
+                    "template": variant_template,
                     "target_pages": spec.target_pages,
                     "actual_pages": pdf_validation.pages if pdf_validation is not None else None,
                     "underfilled": len(visible_claim_ids) < spec.target_pages * 6,
@@ -2969,14 +3048,17 @@ class Pipeline:
 
 
     def list_companies(self, source: str | Path) -> list[CompanyRef]:
-        return self._adapter(Path(source)).list_companies()
+        return self._adapter(_career_source_root(source)).list_companies()
 
     def list_roles(self, source: str | Path, company: str) -> list[RoleRef]:
-        adapter = self._adapter(Path(source))
+        adapter = self._adapter(_career_source_root(source))
         return adapter.list_roles(_match_company(adapter, company))
 
     def generate(self, request: RunRequest | Mapping[str, Any]) -> PipelineResult:
         run_request = request if isinstance(request, RunRequest) else RunRequest.model_validate(request)
+        run_request = run_request.model_copy(
+            update={"source_root": _career_source_root(run_request.source_root)}
+        )
         source, output_root = validate_output_root(run_request.source_root, run_request.output_root)
         adapter = self._adapter(source)
         manifest = adapter.manifest
@@ -3050,6 +3132,12 @@ class Pipeline:
             candidates,
             mode=run_request.output_mode,
         )
+        mappings = bind_experience_duration_diagnostics(
+            mappings,
+            requirements,
+            records,
+            run_request.experience_duration_diagnostics,
+        )
         gaps = build_gaps(requirements, mappings)
         if target.target_basis == TargetBasis.EXACT_CURRENT_JD:
             explicit = [item for item in requirements if item.origin.value == "explicit"]
@@ -3059,7 +3147,14 @@ class Pipeline:
                 "explicit_requirement_coverage": (covered / denominator if denominator else 0.0),
                 "coverage_calculation": {"covered_explicit_requirements": covered, "total_explicit_requirements": denominator, "calculation": "covered_explicit_requirements / total_explicit_requirements"},
             })
-        recommendation = recommend_application(target, mappings, gaps, constraints)
+        recommendation = recommend_application(
+            target,
+            mappings,
+            gaps,
+            constraints,
+            requirements=requirements,
+            records=records,
+        )
         interview_questions = [risk for mapping in mappings for risk in mapping.interview_risks]
         interview_questions.extend(f"How would you close gap {gap.gap_id}: {gap.reason}" for gap in gaps)
         dossier = RoleDossierIR(
@@ -3124,6 +3219,7 @@ class Pipeline:
             "competencies.json": competencies,
             "application-constraints.json": constraints,
             "evidence-map.json": mappings,
+            "experience-duration-facts.json": _experience_duration_fact_index(records),
             "gaps.json": gaps,
             "application-recommendation.json": recommendation,
             "role-dossier-ir.json": _persistable_dossier(dossier),
@@ -3155,6 +3251,10 @@ class Pipeline:
         variant_summaries: dict[str, dict[str, Any]] = {}
         validation_errors: list[str] = []
         for spec in _requested_variant_specs(run_request):
+            variant_template = _template_for_variant(
+                run_request.template,
+                spec.variant,
+            )
             selected_records = _select_variant_records(
                 adapter,
                 resume_records,
@@ -3187,14 +3287,14 @@ class Pipeline:
                     if len(selected_records) >= spec.target_pages * 6
                     else 1
                 ),
-                template=run_request.template,
+                template=variant_template,
             )
             names = _variant_artifact_names(spec)
             pdf_result = render_with_compaction(
                 document,
                 run_dir / names["pdf"],
                 inspection_config=_inspection_for_document(document),
-                template=run_request.template,
+                template=variant_template,
                 preview_path=run_dir / names["preview"],
                 compact=lambda current, report, attempt, current_spec=spec: (
                     _compact_overflowing_variant(
@@ -3250,7 +3350,7 @@ class Pipeline:
                     ),
                     write_text(
                         run_dir / names["html"],
-                        render_html(final_document, run_request.template),
+                        render_html(final_document, variant_template),
                     ),
                     Path(pdf_result.pdf_path),
                     *(Path(path) for path in pdf_result.preview_paths),
@@ -3276,6 +3376,7 @@ class Pipeline:
                 {
                     "variant": variant_key,
                     "base_name": spec.base_name,
+                    "template": variant_template,
                     "target_pages": spec.target_pages,
                     "actual_pages": (
                         pdf_validation.pages
@@ -3348,9 +3449,36 @@ class Pipeline:
         adapter = self._adapter(request.source_root)
         requirements = [Requirement.model_validate(item) for item in read_json(run_dir / "requirements.json")]
         candidates = _load_verified_candidates(adapter, adapter.search_evidence(requirements))
+        records = [
+            record
+            for candidate in candidates
+            if (
+                record := build_evidence_record(
+                    candidate,
+                    candidate.requirement_ids,
+                    mode=request.output_mode,
+                )
+            )
+            is not None
+        ]
         mappings = build_evidence_mappings(requirements, candidates, mode=request.output_mode)
-        path = write_json(run_dir / "evidence-map.json", mappings)
-        return PipelineResult("build-evidence-map", run_dir, (path,), {"requirements": len(requirements), "mappings": len(mappings)})
+        mappings = bind_experience_duration_diagnostics(
+            mappings,
+            requirements,
+            records,
+            request.experience_duration_diagnostics,
+        )
+        mapping_path = write_json(run_dir / "evidence-map.json", mappings)
+        duration_path = write_json(
+            run_dir / "experience-duration-facts.json",
+            _experience_duration_fact_index(records),
+        )
+        return PipelineResult(
+            "build-evidence-map",
+            run_dir,
+            (mapping_path, duration_path),
+            {"requirements": len(requirements), "mappings": len(mappings)},
+        )
 
     def validate_content(self, run: str | Path) -> PipelineResult:
         from .models import (
@@ -3549,8 +3677,17 @@ class Pipeline:
         records = [record for candidate in candidates if (record := build_evidence_record(candidate, candidate.requirement_ids, mode=request.output_mode))]
         result = refresh_evidence_match(prior, requirements, records, changed)
         path = write_json(run_dir / "evidence-map.json", result.mappings)
+        duration_path = write_json(
+            run_dir / "experience-duration-facts.json",
+            _experience_duration_fact_index(records),
+        )
         manifest_path = write_json(run_dir / "source-manifest.json", adapter.manifest)
-        return PipelineResult("refresh-match", run_dir, (path, manifest_path), result.model_dump(mode="json"))
+        return PipelineResult(
+            "refresh-match",
+            run_dir,
+            (path, duration_path, manifest_path),
+            result.model_dump(mode="json"),
+        )
 
     def refresh_role(self, role: str | Path) -> PipelineResult:
         base = Path(role).resolve(strict=True)
@@ -3614,6 +3751,12 @@ class Pipeline:
         mappings = build_evidence_mappings(
             requirements, candidates, mode=request.output_mode
         )
+        mappings = bind_experience_duration_diagnostics(
+            mappings,
+            requirements,
+            records,
+            request.experience_duration_diagnostics,
+        )
         gaps = build_gaps(requirements, mappings)
         if target.target_basis == TargetBasis.EXACT_CURRENT_JD:
             denominator = len(
@@ -3634,7 +3777,12 @@ class Pipeline:
                 },
             })
         recommendation = recommend_application(
-            target, mappings, gaps, constraints
+            target,
+            mappings,
+            gaps,
+            constraints,
+            requirements=requirements,
+            records=records,
         )
         interview_questions = [
             risk for mapping in mappings for risk in mapping.interview_risks

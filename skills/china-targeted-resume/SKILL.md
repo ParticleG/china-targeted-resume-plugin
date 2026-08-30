@@ -18,6 +18,7 @@ Use the OMP Plugin as the primary interactive surface when it is installed; othe
 - Use only these role match values: `已有直接证据`, `可迁移经验`, `有知识无实践`, `明确缺口`, `待确认`.
 - Keep capability match, real-world application constraints, and gap severity independent. Constraints use only `satisfied`, `unsatisfied`, `unknown`, `not_applicable`; severity uses only `Critical`, `Major`, `Minor`, or null.
 - Do not invent facts, upgrade contribution verbs, broaden metric scope, turn company research into candidate experience, or treat a plan as evidence.
+- For experienced-hire output, positive framing may select the strongest evidence-supported verb and foreground role relevance, but it must not exceed the owning fact. Requirement duration is authoritative only when parsed from one atomic numeric verbatim quote/span. Candidate duration is authoritative only when rebuilt from a current `EvidenceRecord` whose owning path/hash/span and extractive atomic safe claim contain the duration plus `checked_at`. A binding must exactly match both sides and every selected evidence fact before a shortfall of at most 25% may become `apply_with_risks`; arbitrary IDs, self-reported numbers, altered thresholds, compound/free-text durations, or unaudited evidence fail closed.
 - Core deterministic CLI operations must run without an LLM. Do not replace CLI validation with prose review.
 - A requested `zh-CN` resume must contain concise Chinese prose, not merely `locale: zh-CN`. When source claims are in another language, translate only the run-local visible `ResumeDocument` strings, preserve every `claim_id`, provenance reference, contribution verb, metric qualifier, name, and conventional technology term, then rerun content/PDF validation. Translation never changes evidence or match state.
 - Roadmap creation is outside this Skill. Export a handoff only after an explicit request; never silently invoke a learning-plan Skill.
@@ -130,7 +131,8 @@ Read references progressively, not all at once:
 | Analyze or persist a role dossier | [role-dossier-contract.md](references/role-dossier-contract.md), [requirement-analysis.md](references/requirement-analysis.md), [competency-model.md](references/competency-model.md) |
 | Map evidence and decide whether a claim may appear | [evidence-policy.md](references/evidence-policy.md) |
 | Model gaps, constraints, or application recommendation | [gap-analysis.md](references/gap-analysis.md) |
-| Apply China-market wording and risk context | [china-recruiting-context.md](references/china-recruiting-context.md) |
+| Apply China-market and experienced-hire wording | [china-recruiting-context.md](references/china-recruiting-context.md), [social-hire-writing.md](references/social-hire-writing.md) |
+| Learn from public resume patterns without copying claims | [public-resume-patterns.md](references/public-resume-patterns.md) |
 | Compose outputs, audit, render, or inspect PDF | [output-contract.md](references/output-contract.md), [resume-audit.md](references/resume-audit.md), [privacy-policy.md](references/privacy-policy.md) |
 | Export confirmed gaps for another Skill | [roadmap-handoff.md](references/roadmap-handoff.md) |
 
@@ -151,13 +153,28 @@ china-targeted-resume generate \
   --company COMPANY \
   --role ROLE \
   [--jd-text JD_TEXT | --jd-file JD_FILE | --jd-url JD_URL] \
+  [--experience-duration-diagnostics-file DURATION_DIAGNOSTICS_JSON] \
   --mode targeted_application \
   [--include-extended-profile] \
-  --template ats-simple \
+  --template adaptive \
   --output OUTPUT_ROOT
 ```
 
 The default output is `resume-recruiter-1p` plus `resume-technical-2p`. Add `--include-extended-profile` only when the user wants the opt-in `technical-profile-3p`. Add `--export-roadmap-handoff` only when the user explicitly asks for that handoff; prefer the separate export command after gaps have been reviewed.
+
+Without OMP, use `guided-generate` to select a discovered company and role interactively. Prompts use a dedicated terminal device, success stays machine-readable JSON on stdout, and expected errors remain a single JSON object on stderr. Non-interactive callers must pass exact `--company` and `--role` values.
+
+```bash
+china-targeted-resume guided-generate \
+  --source SOURCE_ROOT_OR_COMPANY_RESEARCH \
+  [--jd-file JD_FILE] \
+  [--experience-duration-diagnostics-file DURATION_DIAGNOSTICS_JSON] \
+  --output OUTPUT_ROOT
+```
+
+The `adaptive` strategy keeps every document semantic and single-column: the recruiter one-page variant uses `ats-simple`, while the technical two-page and optional extended three-page variants use `human-readable`. Each manifest entry records the concrete template.
+
+Duration diagnostics require a baseline run first. Read its deterministic `requirements.json`, `evidence-map.json`, and private `experience-duration-facts.json`, then create a binding using the exact explicit requirement ID and an evidence ID from that fact index. Before binding, the rerun reopens each owning source span and rebuilds the record; candidate scope/years/check time must again match, while the required scope/minimum/maximum must match the requirement quote/span. Any mismatch fails before recommendation.
 
 Analyze and refresh:
 
@@ -229,7 +246,7 @@ For Tier C, prefer exact-role choices when available; otherwise create a clearly
 1. Confirm that the user explicitly wants capability-gap planning.
 2. Read [roadmap-handoff.md](references/roadmap-handoff.md).
 3. Export only confirmed, worthwhile gaps; exclude `待确认` and low-value Preferred gaps by default.
-4. Return `roadmap-handoff.json` to an independent roadmap Skill. Do not generate the learning plan here and do not modify role match state.
+4. Return `roadmap-handoff.json` to the independent `china-resume-growth-roadmap` Skill. Do not generate the learning plan here and do not modify role match state.
 
 ## Natural-language examples
 

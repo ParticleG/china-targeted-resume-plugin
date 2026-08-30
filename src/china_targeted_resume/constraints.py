@@ -7,6 +7,8 @@ from typing import Any
 
 from .models import ApplicationConstraint
 
+
+
 _CONSTRAINTS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("location", re.compile(r"\b(?:location|based in|on.?site|hybrid|remote)\b|(?:工作地点|办公地点|现场办公|混合办公|远程)", re.I)),
     ("work_authorization", re.compile(r"\b(?:work authorization|authorized to work|visa sponsorship|citizen(?:ship)?)\b|(?:工作许可|签证|公民身份)", re.I)),
@@ -27,6 +29,7 @@ def _make_constraint(data: dict[str, Any]) -> ApplicationConstraint:
         if target is not None:
             selected[target] = value
     return ApplicationConstraint.model_validate(selected)
+
 
 
 def parse_application_constraints(

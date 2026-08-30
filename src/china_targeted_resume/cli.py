@@ -1,14 +1,17 @@
 """Command-line interface for deterministic targeted-resume operations."""
 from __future__ import annotations
 
+from contextlib import contextmanager
 import argparse
 import json
+import os
 from pathlib import Path
 import sys
-from typing import Any, Sequence
+from typing import Any, Iterator, Sequence, TextIO
 
 from pydantic import ValidationError
 
+from .growth_roadmap import write_growth_roadmap
 from .io import jsonable, read_json
 from .models import JdInput, OutputMode, RunRequest
 from .pipeline import Pipeline, PipelineError, PipelineResult, SelectionRequired
@@ -16,6 +19,88 @@ from .pipeline import Pipeline, PipelineError, PipelineResult, SelectionRequired
 
 def _path(value: str) -> Path:
     return Path(value).expanduser()
+
+def _add_generation_arguments(
+    command: argparse.ArgumentParser,
+) -> None:
+    command.add_argument(
+        "--source",
+        type=_path,
+        required=True,
+        help=(
+            "Read-only career source root or a conventional child such as "
+            "company-research."
+        ),
+    )
+    command.add_argument("--company", help="Exact company ID or display name.")
+    command.add_argument("--role", help="Exact role ID or title.")
+    jd = command.add_mutually_exclusive_group()
+    jd.add_argument("--jd-text", help="Offline JD text supplied directly.")
+    jd.add_argument(
+        "--jd-file",
+        type=_path,
+        help="Offline UTF-8 JD file (maximum 2 MiB).",
+    )
+    jd.add_argument(
+        "--jd-url",
+        help="Explicit HTTPS JD URL to fetch with size/time bounds.",
+    )
+    command.add_argument(
+        "--jd-incomplete",
+        action="store_true",
+        help="Treat supplied JD text, file, or URL as an incomplete excerpt and keep Tier B.",
+    )
+    command.add_argument(
+        "--application-constraints-file",
+        type=_path,
+        help="Private JSON array of independently assessed application constraints.",
+    )
+    command.add_argument(
+        "--experience-duration-diagnostics-file",
+        type=_path,
+        help=(
+            "Private JSON array binding audited duration diagnostics to "
+            "explicit requirement IDs and selected evidence IDs."
+        ),
+    )
+    command.add_argument(
+        "--mode",
+        choices=[item.value for item in OutputMode],
+        default=OutputMode.TARGETED_APPLICATION.value,
+        help="Disclosure/output context (default: targeted_application).",
+    )
+    command.add_argument(
+        "--include-extended-profile",
+        action="store_true",
+        help="Also generate the opt-in extended three-page profile.",
+    )
+    command.add_argument(
+        "--template",
+        choices=("adaptive", "ats-simple", "human-readable"),
+        default="adaptive",
+        help=(
+            "Rendering strategy: adaptive uses ATS single-column for 1p and "
+            "human-readable single-column for 2p/3p (default: adaptive)."
+        ),
+    )
+    command.add_argument(
+        "--output",
+        type=_path,
+        required=True,
+        help="Output root, separate from the source root.",
+    )
+    command.add_argument(
+        "--language",
+        default="zh-CN",
+        help="Resume locale (default: zh-CN).",
+    )
+    command.add_argument(
+        "--export-roadmap-handoff",
+        action="store_true",
+        help="Explicitly include the optional roadmap handoff.",
+    )
+
+
 def _add_ir_json_io(parser: argparse.ArgumentParser, *, output: bool = True) -> None:
     parser.add_argument(
         "--input",
@@ -46,25 +131,13 @@ def _parser() -> argparse.ArgumentParser:
     roles.add_argument("--company", required=True, help="Exact company ID or display name.")
 
     generate = commands.add_parser("generate", help="Generate and validate a complete non-overwriting resume run.")
-    generate.add_argument("--source", type=_path, required=True, help="Read-only career source root.")
-    generate.add_argument("--company", help="Exact company ID or display name.")
-    generate.add_argument("--role", help="Exact role ID or title.")
-    jd = generate.add_mutually_exclusive_group()
-    jd.add_argument("--jd-text", help="Offline JD text supplied directly.")
-    jd.add_argument("--jd-file", type=_path, help="Offline UTF-8 JD file (maximum 2 MiB).")
-    jd.add_argument("--jd-url", help="Explicit HTTPS JD URL to fetch with size/time bounds.")
-    generate.add_argument("--jd-incomplete", action="store_true", help="Treat supplied JD text, file, or URL as an incomplete excerpt and keep Tier B.")
-    generate.add_argument(
-        "--application-constraints-file",
-        type=_path,
-        help="Private JSON array of independently assessed application constraints.",
+    _add_generation_arguments(generate)
+
+    guided = commands.add_parser(
+        "guided-generate",
+        help="Select a discovered company and role interactively, then run the complete generation pipeline.",
     )
-    generate.add_argument("--mode", choices=[item.value for item in OutputMode], default=OutputMode.TARGETED_APPLICATION.value, help="Disclosure/output context (default: targeted_application).")
-    generate.add_argument("--include-extended-profile", action="store_true", help="Also generate the opt-in extended three-page profile.")
-    generate.add_argument("--template", choices=("ats-simple", "human-readable"), default="ats-simple", help="Local rendering template (default: ats-simple).")
-    generate.add_argument("--output", type=_path, required=True, help="Output root, separate from the source root.")
-    generate.add_argument("--language", default="zh-CN", help="Resume locale (default: zh-CN).")
-    generate.add_argument("--export-roadmap-handoff", action="store_true", help="Explicitly include the optional roadmap handoff.")
+    _add_generation_arguments(guided)
 
     analyze = commands.add_parser("analyze-role", help="Analyze a validated RunRequest JSON and create a run-local dossier.")
     analyze.add_argument("--request", type=_path, required=True, help="Path to a RunRequest JSON file.")
@@ -79,6 +152,15 @@ def _parser() -> argparse.ArgumentParser:
     export.add_argument("--role", type=_path, required=True, help="Existing run or role-dossier directory.")
     export.add_argument("--severity", default="Critical,Major", help="Comma-separated severities (default: Critical,Major).")
     export.add_argument("--output", type=_path, required=True, help="Destination roadmap-handoff.json.")
+
+    growth = commands.add_parser(
+        "write-growth-roadmap",
+        help="Validate a handoff-bound growth plan and write private non-overwriting artifacts.",
+    )
+    growth.add_argument("--source", type=_path, required=True, help="Read-only career source root used only for output-boundary validation.")
+    growth.add_argument("--handoff", type=_path, required=True, help="Private roadmap-handoff.json path.")
+    growth.add_argument("--plan", type=_path, required=True, help="Private growth-roadmap plan JSON path.")
+    growth.add_argument("--output", type=_path, required=True, help="Private output root outside the source root.")
 
     evidence = commands.add_parser("build-evidence-map", help="Rebuild the deterministic evidence map for an existing run.")
     evidence.add_argument("--run", type=_path, required=True, help="Existing run directory.")
@@ -203,6 +285,20 @@ def _application_constraints(path: Path | None) -> list[dict[str, Any]]:
         raise PipelineError("application constraints file must contain one JSON array of objects")
     return [dict(item) for item in payload]
 
+def _experience_duration_diagnostics(
+    path: Path | None,
+) -> list[dict[str, Any]]:
+    if path is None:
+        return []
+    payload = read_json(path)
+    if not isinstance(payload, list) or not all(
+        isinstance(item, dict) for item in payload
+    ):
+        raise PipelineError(
+            "experience duration diagnostics file must contain one JSON array of objects"
+        )
+    return [dict(item) for item in payload]
+
 
 def _request_from_generate(args: argparse.Namespace) -> RunRequest:
     return RunRequest(
@@ -216,12 +312,153 @@ def _request_from_generate(args: argparse.Namespace) -> RunRequest:
             complete=False if args.jd_incomplete else None,
         ),
         application_constraints=_application_constraints(args.application_constraints_file),
+        experience_duration_diagnostics=_experience_duration_diagnostics(
+            args.experience_duration_diagnostics_file
+        ),
         output_mode=args.mode,
         language=args.language,
         include_extended_profile=args.include_extended_profile,
         template=args.template,
         output_root=args.output,
         export_roadmap_handoff=args.export_roadmap_handoff,
+    )
+
+@contextmanager
+def _guided_console() -> Iterator[tuple[TextIO, TextIO]]:
+    terminal_paths = ["/dev/tty"]
+    try:
+        for stream in (sys.stdin, sys.stderr, sys.stdout):
+            if not stream.isatty():
+                continue
+            stream_terminal = os.ttyname(stream.fileno())
+            if stream_terminal not in terminal_paths:
+                terminal_paths.append(stream_terminal)
+    except OSError:
+        pass
+    terminal_input: TextIO | None = None
+    terminal_prompt: TextIO | None = None
+    last_error: OSError | None = None
+    for path in terminal_paths:
+        candidate_input: TextIO | None = None
+        try:
+            candidate_input = open(
+                path,
+                "r",
+                encoding="utf-8",
+            )
+            candidate_prompt = open(
+                path,
+                "w",
+                encoding="utf-8",
+                buffering=1,
+            )
+            terminal_input = candidate_input
+            terminal_prompt = candidate_prompt
+            break
+        except OSError as error:
+            last_error = error
+            if candidate_input is not None:
+                candidate_input.close()
+    if terminal_input is None or terminal_prompt is None:
+        raise PipelineError(
+            "guided selection requires an interactive TTY; "
+            "pass exact --company and --role for non-interactive use"
+        ) from last_error
+    with terminal_input, terminal_prompt:
+        yield terminal_input, terminal_prompt
+
+
+def _select_guided_choice(
+    label: str,
+    choices: Sequence[Any],
+    *,
+    value_key: str,
+    display_key: str,
+    input_stream: TextIO,
+    prompt_stream: TextIO,
+) -> str:
+    if not choices:
+        raise PipelineError(f"no {label} choices were discovered")
+    normalized = [jsonable(choice) for choice in choices]
+    if len(normalized) == 1:
+        selected = str(normalized[0][value_key])
+        print(f"Using only discovered {label}: {selected}", file=prompt_stream)
+        return selected
+    print(f"Available {label} choices:", file=prompt_stream)
+    for index, choice in enumerate(normalized, 1):
+        print(
+            f"  {index}. {choice[display_key]} [{choice[value_key]}]",
+            file=prompt_stream,
+        )
+    print(
+        f"Select {label} by number or exact ID: ",
+        end="",
+        file=prompt_stream,
+        flush=True,
+    )
+    response = input_stream.readline().strip()
+    if not response:
+        raise PipelineError(f"{label} selection is required")
+    if response.isdecimal():
+        index = int(response)
+        if 1 <= index <= len(normalized):
+            return str(normalized[index - 1][value_key])
+    for choice in normalized:
+        if response in {
+            str(choice[value_key]),
+            str(choice[display_key]),
+        }:
+            return str(choice[value_key])
+    raise PipelineError(f"invalid {label} selection: {response}")
+
+
+def _request_from_guided(
+    args: argparse.Namespace,
+    pipeline: Pipeline,
+    *,
+    input_stream: TextIO | None = None,
+    prompt_stream: TextIO | None = None,
+) -> RunRequest:
+    request = _request_from_generate(args)
+    company = str(request.company_ref or "").strip()
+    role = str(request.role_ref or "").strip()
+    if company and role:
+        return request
+    if (input_stream is None) != (prompt_stream is None):
+        raise ValueError(
+            "guided input and prompt streams must be provided together"
+        )
+    if input_stream is None or prompt_stream is None:
+        with _guided_console() as (
+            terminal_input,
+            terminal_prompt,
+        ):
+            return _request_from_guided(
+                args,
+                pipeline,
+                input_stream=terminal_input,
+                prompt_stream=terminal_prompt,
+            )
+    if not company:
+        company = _select_guided_choice(
+            "company",
+            pipeline.list_companies(request.source_root),
+            value_key="company_id",
+            display_key="display_name",
+            input_stream=input_stream,
+            prompt_stream=prompt_stream,
+        )
+    if not role:
+        role = _select_guided_choice(
+            "role",
+            pipeline.list_roles(request.source_root, company),
+            value_key="role_id",
+            display_key="title",
+            input_stream=input_stream,
+            prompt_stream=prompt_stream,
+        )
+    return request.model_copy(
+        update={"company_ref": company, "role_ref": role}
     )
 
 
@@ -234,6 +471,8 @@ def _dispatch(args: argparse.Namespace, pipeline: Pipeline) -> PipelineResult | 
         return {"operation": args.command, "roles": jsonable(choices), "count": len(choices)}
     if args.command == "generate":
         return pipeline.generate(_request_from_generate(args))
+    if args.command == "guided-generate":
+        return pipeline.generate(_request_from_guided(args, pipeline))
     if args.command == "analyze-role":
         return pipeline.analyze_role(RunRequest.model_validate(read_json(args.request)))
     if args.command == "refresh-role":
@@ -243,6 +482,13 @@ def _dispatch(args: argparse.Namespace, pipeline: Pipeline) -> PipelineResult | 
     if args.command == "export-roadmap-handoff":
         severities = [value.strip() for value in args.severity.split(",") if value.strip()]
         return pipeline.export_roadmap_handoff(args.role, args.output, severities)
+    if args.command == "write-growth-roadmap":
+        return write_growth_roadmap(
+            source_root=args.source,
+            handoff_path=args.handoff,
+            plan_path=args.plan,
+            output_root=args.output,
+        )
     if args.command == "discover-source-structure":
         return pipeline.discover_source_structure(args.source, output=args.output)
     if args.command == "validate-source-map":

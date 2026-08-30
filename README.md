@@ -471,6 +471,19 @@ uv run china-targeted-resume list-roles \
 
 Use the returned identifiers in later commands. If multiple companies or roles match, select one explicitly rather than guessing.
 
+## Tutorial: guided standalone generation
+
+When OMP is unavailable, `guided-generate` removes the manual company/role discovery choreography. It accepts either the career repository root or a conventional child such as `company-research`, writes interactive choices and prompts only to a dedicated terminal device, and keeps the final machine-readable result on stdout. Expected failures remain one JSON object on stderr; non-interactive callers must pass exact `--company` and `--role` values.
+
+```bash
+uv run china-targeted-resume guided-generate \
+  --source "$SOURCE_ROOT/company-research" \
+  --jd-file /path/to/job-description.md \
+  --output "$OUTPUT_ROOT"
+```
+
+Pass `--company` or `--role` to skip either prompt. The default `adaptive` strategy selects the concrete single-column template per variant and records it in `resume-variants.json`.
+
 ## Tutorial: generate from a complete current JD
 
 A supplied, non-empty job description is treated as complete by default and produces a Tier A, `exact-current-jd` analysis. Supply one—and only one—of `--jd-file`, `--jd-text`, or `--jd-url`. `--company` and `--role` may be omitted when the JD itself is the authoritative target input, although exact source identifiers improve target naming and source joins.
@@ -485,7 +498,7 @@ uv run china-targeted-resume generate \
   --jd-file /path/to/job-description.md \
   --mode targeted_application \
   --language zh-CN \
-  --template ats-simple \
+  --template adaptive \
   --output "$OUTPUT_ROOT"
 ```
 
@@ -499,7 +512,7 @@ uv run china-targeted-resume generate \
   --jd-url https://jobs.example.invalid/ROLE \
   --mode targeted_application \
   --language zh-CN \
-  --template ats-simple \
+  --template adaptive \
   --output "$OUTPUT_ROOT"
 ```
 
@@ -515,7 +528,7 @@ uv run china-targeted-resume generate \
   --jd-file /path/to/job-description.md \
   --mode targeted_application \
   --language zh-CN \
-  --template ats-simple \
+  --template adaptive \
   --include-extended-profile \
   --output "$OUTPUT_ROOT"
 ```
@@ -536,7 +549,38 @@ uv run china-targeted-resume generate \
   --output "$OUTPUT_ROOT"
 ```
 
-`--application-constraints-file` must contain one private JSON array conforming to [`schemas/application-constraints.schema.json`](schemas/application-constraints.schema.json). A non-empty array replaces the constraints parsed from the JD; an empty array preserves the parsed set. Set `hard_gate` from the specific constraint semantics and supporting assessment, not merely because text appeared under a “required” heading.
+`--application-constraints-file` must contain one private JSON array conforming to [`schemas/application-constraints.schema.json`](schemas/application-constraints.schema.json). A non-empty array replaces the constraints parsed from the JD; an empty array preserves the parsed set. Use it only for independently assessed logistics and eligibility such as location, work authorization, language, travel, schedule, deadline, or mandatory checks. Set `hard_gate` from the specific constraint semantics and supporting assessment, not merely because text appeared under a “required” heading. Experience, seniority, capability, and skill thresholds are rejected here.
+
+Experience duration and skill thresholds are requirements, not application constraints. Duration diagnostics use a two-run, non-overwriting flow so every input binds to IDs produced by the deterministic requirement and evidence mapping stages:
+
+1. Run `generate` or `guided-generate` once without a duration diagnostics file.
+2. Read the resulting `requirements.json`, `evidence-map.json`, and private `experience-duration-facts.json`. The explicit requirement must contain a parser-owned duration from its quote; the candidate fact index lists only evidence IDs whose current owning path/hash/span yielded one extractive atomic duration plus checked date.
+3. Create a private `duration-diagnostics.json` using the exact requirement ID and an evidence ID from that candidate fact index:
+
+```json
+[
+  {
+    "requirement_id": "REQ-PYTHON-YEARS",
+    "diagnostic": {
+      "candidate_scope": "professional Python development",
+      "required_scope": "professional Python development",
+      "unit": "years",
+      "candidate_years": 4,
+      "required_min_years": 5,
+      "evidence_refs": ["ev-python-duration"],
+      "checked_at": "2026-08-30T00:00:00Z"
+    }
+  }
+]
+```
+
+4. Rerun the same generation command into the same output root, adding:
+
+```bash
+--experience-duration-diagnostics-file /path/to/duration-diagnostics.json
+```
+
+The new timestamped run rebuilds current `EvidenceRecord` objects by reopening their owning source sections and validating source path, hash, and span. A referenced record must contain one extractive atomic candidate fact such as `4 years of professional Python development experience; checked 2026-08-30`; the parser owns its scope, years, and check time. The binding's `candidate_scope`, `candidate_years`, and `checked_at` must exactly match every referenced record fact, so an arbitrary selected evidence ID or self-reported number is rejected. The required scope/minimum/maximum must likewise equal the structure parsed from the explicit requirement quote/span; changing an 8-year JD threshold to 5 years is rejected. Compound scopes, free text, missing audit data, inferred requirements, altered thresholds, or evidence without a matching owning duration fact cannot use the tolerance.
 
 ## Tutorial: generate when only the role is known
 
@@ -674,10 +718,11 @@ Example:
   "output_mode": "targeted_application",
   "language": "zh-CN",
   "include_extended_profile": false,
-  "template": "ats-simple",
+  "template": "adaptive",
   "persist_role_research": false,
   "refresh_external_sources": false,
   "export_roadmap_handoff": false,
+  "experience_duration_diagnostics": [],
   "application_constraints": {}
 }
 ```
@@ -720,7 +765,19 @@ uv run china-targeted-resume export-roadmap-handoff \
   --output "$RUN_DIR/roadmap-handoff.json"
 ```
 
-This command exports confirmed gaps. It does not create a learning plan and does not change current evidence states.
+This command exports confirmed gaps. It does not create a learning plan and does not change current evidence states. Give the resulting file to the separately installed `china-resume-growth-roadmap` Skill only after an explicit planning request.
+
+The independent Skill prepares a private plan conforming to [`schemas/growth-roadmap.schema.json`](schemas/growth-roadmap.schema.json). Final artifacts must be produced through the deterministic writer:
+
+```bash
+uv run china-targeted-resume write-growth-roadmap \
+  --source "$SOURCE_ROOT" \
+  --handoff "$RUN_DIR/roadmap-handoff.json" \
+  --plan /path/to/private/draft-growth-roadmap.json \
+  --output "$OUTPUT_ROOT"
+```
+
+The writer verifies the exact handoff hash and every preserved gap field—including `priority_reason`, `suggested_artifacts`, and `verification_signals`—requires all six stages and at least one current HTTPS learning resource per plan, rejects permissive/symlinked/oversized inputs, validates the output boundary, creates a new non-overwriting `0700` run directory, and atomically writes three `0600` artifacts: JSON, Markdown, and a validation receipt.
 
 ## Output modes, variants, and templates
 
@@ -740,8 +797,11 @@ Each variant is composed independently for its reader and configured page target
 
 Templates:
 
-- `ats-simple`: conservative single-column ATS layout.
-- `human-readable`: the same semantic reading order with a more reader-oriented visual treatment.
+- `adaptive` (default): `ats-simple` for the recruiter one-page variant and `human-readable` for the technical two-page and optional extended three-page variants.
+- `ats-simple`: conservative semantic single-column ATS layout for every variant.
+- `human-readable`: the same semantic single-column reading order with a more reader-oriented visual treatment for every variant.
+
+Multi-column rendering is intentionally unsupported because it can make extraction order ambiguous. Page-count variants instead differ through evidence budget, density, typography, and reader emphasis.
 
 ## Using the OMP Plugin and Skill
 
@@ -889,3 +949,6 @@ Open `resume-variants.json`, then read the failing variant's `<base>.validation.
 - [`skills/china-targeted-resume/references/resume-audit.md`](skills/china-targeted-resume/references/resume-audit.md): content and PDF acceptance
 - [`skills/china-targeted-resume/references/privacy-policy.md`](skills/china-targeted-resume/references/privacy-policy.md): privacy and retention rules
 - [`skills/china-targeted-resume/references/roadmap-handoff.md`](skills/china-targeted-resume/references/roadmap-handoff.md): explicit gap export
+- [`skills/china-targeted-resume/references/social-hire-writing.md`](skills/china-targeted-resume/references/social-hire-writing.md): experienced-hire relevance, verbs, terminology, metrics, and structured near-match rules
+- [`skills/china-targeted-resume/references/public-resume-patterns.md`](skills/china-targeted-resume/references/public-resume-patterns.md): public examples and evidence-safe adaptation patterns
+- [`skills/china-resume-growth-roadmap/SKILL.md`](skills/china-resume-growth-roadmap/SKILL.md): independent staged growth-plan workflow for an explicit roadmap handoff

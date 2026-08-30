@@ -6,6 +6,8 @@ import pytest
 from pydantic import ValidationError
 
 from china_targeted_resume.evidence import (
+    assess_experience_duration_near_match,
+    bind_experience_duration_diagnostics,
     build_evidence_map,
     build_evidence_record,
     claim_supports_skill,
@@ -13,6 +15,7 @@ from china_targeted_resume.evidence import (
 )
 from china_targeted_resume.models import EvidenceMapping, RoleMatchState, SourceRef
 from china_targeted_resume.provenance import build_provenance
+from china_targeted_resume.requirements import parse_requirements
 
 
 @pytest.mark.parametrize("state", list(RoleMatchState))
@@ -40,6 +43,289 @@ def test_five_state_schema_rejects_noncanonical_values(invalid: str) -> None:
             }
         )
 
+def _duration_record(
+    candidate_factory,
+    requirement,
+    *,
+    years: int,
+    claim: str | None = None,
+):
+    candidate = candidate_factory(
+        candidate_id=f"candidate-duration-{years}",
+        requirement_ids=[requirement.requirement_id],
+        proposed_claim=(
+            claim
+            or (
+                f"Maintained {years} years of professional Python development "
+                "experience; checked 2026-08-30."
+            )
+        ),
+        match_state=RoleMatchState.TRANSFERABLE_EXPERIENCE,
+    )
+    record = build_evidence_record(
+        candidate,
+        [requirement.requirement_id],
+        mode="targeted_application",
+    )
+    assert record is not None
+    return record
+
+
+def test_duration_binding_uses_verbatim_requirement_and_owning_candidate_fact(
+    candidate_factory,
+) -> None:
+    [requirement] = parse_requirements(
+        "# Required\n"
+        "- At least 8 years of professional Python development experience.\n",
+        source_id="fixture-jd",
+    )
+    record = _duration_record(
+        candidate_factory,
+        requirement,
+        years=6,
+    )
+    mapping = EvidenceMapping(
+        requirement_id=requirement.requirement_id,
+        match_state=RoleMatchState.TRANSFERABLE_EXPERIENCE,
+        evidence_ids=[record.evidence_id],
+        selection_reason="Verified duration evidence.",
+    )
+    binding = {
+        "requirement_id": requirement.requirement_id,
+        "diagnostic": {
+            "candidate_scope": "professional Python development",
+            "required_scope": "professional Python development",
+            "unit": "years",
+            "candidate_years": 6,
+            "required_min_years": 8,
+            "evidence_refs": [record.evidence_id],
+            "checked_at": "2026-08-30T00:00:00Z",
+        },
+    }
+
+    [bound] = bind_experience_duration_diagnostics(
+        [mapping],
+        [requirement],
+        [record],
+        [binding],
+    )
+
+    assert record.experience_duration_fact is not None
+    assert bound.experience_duration_diagnostic is not None
+    assert assess_experience_duration_near_match(
+        bound,
+        requirement,
+        [record],
+    ) == (6.0, 8.0, 0.25)
+
+
+def test_duration_binding_rejects_threshold_different_from_verbatim_requirement(
+    candidate_factory,
+) -> None:
+    [requirement] = parse_requirements(
+        "# Required\n"
+        "- At least 8 years of professional Python development experience.\n",
+        source_id="fixture-jd",
+    )
+    record = _duration_record(
+        candidate_factory,
+        requirement,
+        years=4,
+    )
+    mapping = EvidenceMapping(
+        requirement_id=requirement.requirement_id,
+        match_state=RoleMatchState.TRANSFERABLE_EXPERIENCE,
+        evidence_ids=[record.evidence_id],
+        selection_reason="Verified duration evidence.",
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="must match the verbatim requirement",
+    ):
+        bind_experience_duration_diagnostics(
+            [mapping],
+            [requirement],
+            [record],
+            [
+                {
+                    "requirement_id": requirement.requirement_id,
+                    "diagnostic": {
+                        "candidate_scope": "professional Python development",
+                        "required_scope": "professional Python development",
+                        "unit": "years",
+                        "candidate_years": 4,
+                        "required_min_years": 5,
+                        "evidence_refs": [record.evidence_id],
+                        "checked_at": "2026-08-30T00:00:00Z",
+                    },
+                }
+            ],
+        )
+
+
+@pytest.mark.parametrize(
+    ("claim", "candidate_years", "expected_error"),
+    [
+        (
+            "Implemented professional Python automation; checked 2026-08-30.",
+            4,
+            "no owning duration fact",
+        ),
+        (
+            "Maintained 6 years of professional Python development experience; checked 2026-08-30.",
+            4,
+            "does not match owning evidence",
+        ),
+        (
+            "Maintained 6 years of professional Python development experience.",
+            6,
+            "no owning duration fact",
+        ),
+    ],
+)
+def test_duration_binding_rejects_selected_id_without_matching_candidate_fact(
+    candidate_factory,
+    claim,
+    candidate_years,
+    expected_error,
+) -> None:
+    [requirement] = parse_requirements(
+        "# Required\n"
+        "- At least 8 years of professional Python development experience.\n",
+        source_id="fixture-jd",
+    )
+    record = _duration_record(
+        candidate_factory,
+        requirement,
+        years=6,
+        claim=claim,
+    )
+    mapping = EvidenceMapping(
+        requirement_id=requirement.requirement_id,
+        match_state=RoleMatchState.TRANSFERABLE_EXPERIENCE,
+        evidence_ids=[record.evidence_id],
+        selection_reason="Selected evidence ID.",
+    )
+
+    with pytest.raises(ValueError, match=expected_error):
+        bind_experience_duration_diagnostics(
+            [mapping],
+            [requirement],
+            [record],
+            [
+                {
+                    "requirement_id": requirement.requirement_id,
+                    "diagnostic": {
+                        "candidate_scope": "professional Python development",
+                        "required_scope": "professional Python development",
+                        "unit": "years",
+                        "candidate_years": candidate_years,
+                        "required_min_years": 8,
+                        "evidence_refs": [record.evidence_id],
+                        "checked_at": "2026-08-30T00:00:00Z",
+                    },
+                }
+            ],
+        )
+
+
+
+def test_duration_binding_rejects_fact_without_owning_source_span(
+    candidate_factory,
+) -> None:
+    [requirement] = parse_requirements(
+        "# Required\n"
+        "- At least 8 years of professional Python development experience.\n",
+        source_id="fixture-jd",
+    )
+    candidate = candidate_factory(
+        candidate_id="candidate-duration-no-span",
+        requirement_ids=[requirement.requirement_id],
+        source_span=None,
+        proposed_claim=(
+            "Maintained 6 years of professional Python development "
+            "experience; checked 2026-08-30."
+        ),
+        match_state=RoleMatchState.TRANSFERABLE_EXPERIENCE,
+    )
+    record = build_evidence_record(
+        candidate,
+        [requirement.requirement_id],
+        mode="targeted_application",
+    )
+    assert record is not None
+    assert record.experience_duration_fact is None
+    mapping = EvidenceMapping(
+        requirement_id=requirement.requirement_id,
+        match_state=RoleMatchState.TRANSFERABLE_EXPERIENCE,
+        evidence_ids=[record.evidence_id],
+        selection_reason="Selected evidence without an owning span.",
+    )
+
+    with pytest.raises(ValueError, match="no owning duration fact"):
+        bind_experience_duration_diagnostics(
+            [mapping],
+            [requirement],
+            [record],
+            [
+                {
+                    "requirement_id": requirement.requirement_id,
+                    "diagnostic": {
+                        "candidate_scope": "professional Python development",
+                        "required_scope": "professional Python development",
+                        "unit": "years",
+                        "candidate_years": 6,
+                        "required_min_years": 8,
+                        "evidence_refs": [record.evidence_id],
+                        "checked_at": "2026-08-30T00:00:00Z",
+                    },
+                }
+            ],
+        )
+
+
+def test_duration_requirement_mapping_keeps_owning_duration_evidence(
+    candidate_factory,
+) -> None:
+    [requirement] = parse_requirements(
+        "# Required\n"
+        "- At least 5 years of professional Python development experience.\n",
+        source_id="fixture-jd",
+    )
+    duration_candidate = candidate_factory(
+        candidate_id="candidate-duration-mapping",
+        requirement_ids=[requirement.requirement_id],
+        proposed_claim=(
+            "Maintained 4 years of professional Python development "
+            "experience; checked 2026-08-30."
+        ),
+        match_state=RoleMatchState.TRANSFERABLE_EXPERIENCE,
+    )
+    direct_candidate = candidate_factory(
+        candidate_id="candidate-direct-python",
+        requirement_ids=[requirement.requirement_id],
+        proposed_claim="Implemented professional Python automation.",
+        match_state=RoleMatchState.DIRECT_EVIDENCE,
+    )
+    duration_record = build_evidence_record(
+        duration_candidate,
+        [requirement.requirement_id],
+        mode="targeted_application",
+    )
+    assert duration_record is not None
+
+    [mapping] = build_evidence_map(
+        [requirement],
+        [direct_candidate, duration_candidate],
+        mode="targeted_application",
+    )
+
+    assert duration_record.evidence_id in mapping.evidence_ids
+    assert any(
+        "duration" in risk.casefold()
+        for risk in mapping.interview_risks
+    )
 
 def test_direct_state_without_evidence_is_rejected() -> None:
     with pytest.raises(ValidationError, match="direct evidence"):

@@ -24,6 +24,7 @@ export type ResumeToolName = (typeof RESUME_TOOL_NAMES)[number];
 
 export interface VariantStatusSummary {
   readonly variant: string;
+  readonly template: "ats-simple" | "human-readable";
   readonly targetPages: number;
   readonly actualPages?: number;
   readonly auditSuccess: boolean;

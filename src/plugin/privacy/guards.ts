@@ -55,7 +55,7 @@ export class SourceSlicePolicyError extends PrivacyError {
 }
 
 const FORBIDDEN_METADATA_KEY = /^(?:body|content|raw|quote|text|markdown|prompt|secret|secrets?|credential(?:s)?|contacts?|contact[-_ ]?(?:info|details)?|phones?|telephone|emails?|addresses?|tokens?|api[-_]?keys?|private[-_]?keys?)$/i;
-const FORBIDDEN_WORD = /(?:contact|e[-_ ]?mail|phone|telephone|address|linkedin|credential|password|passwd|secret|token|api[-_ ]?key|private(?:[-_ ]?(?:key|data|info|notes?))?|sensitive|access[-_ ]?key|bearer|authorization|cookie|id[_-]?rsa|\.env|\.pem|f6|p3)/i;
+const FORBIDDEN_WORD = /(?:contact|e[-_ ]?mail|phone|telephone|address|linkedin|credential|password|passwd|secret|token|api[-_ ]?key|private(?:[-_ ]?(?:key|data|info|notes?))?|sensitive|access[-_ ]?key|bearer|authorization|cookie|id[_-]?rsa|\.env|\.pem)/i;
 const SECRET_VALUE = /(?:^|\b)(?:sk-[A-Za-z0-9_-]{12,}|gh[pousr]_[A-Za-z0-9_]{12,}|AKIA[0-9A-Z]{12,}|eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,})(?:\b|$)/;
 const EMAIL_VALUE = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i;
 const PHONE_VALUE = /(?:\+?\d[\d .()_-]{7,}\d)/;
@@ -300,9 +300,10 @@ export function assertSafeMetadata(value: unknown, key = "metadata", depth = 0):
     // Session storage paths are metadata even when a private directory name
     // contains words such as "privacy". Source-slice paths are still checked.
     const sessionPathMetadata = /(?:sessionJsonlPath|observedSession\.path|sessionDirectory\.path)$/i.test(key);
+    const opaqueIdentifierMetadata = /(?:^|\.)(?:runId|authorizationId|requestId|inputId|evidenceId|claimId|digest)$/i.test(key);
     if (
       !sessionPathMetadata &&
-      (FORBIDDEN_WORD.test(value) || SECRET_VALUE.test(value) || SECRET_ASSIGNMENT.test(value))
+      (FORBIDDEN_WORD.test(value) || (!opaqueIdentifierMetadata && F6_P3_VALUE.test(value)) || SECRET_VALUE.test(value) || SECRET_ASSIGNMENT.test(value))
     ) {
       throw new PrivacyAuthorizationError("unsafe-authorization", `${key} contains forbidden metadata`);
     }

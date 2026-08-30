@@ -1,6 +1,90 @@
 {
-  "$schema":"https://json-schema.org/draft/2020-12/schema","$id":"https://schemas.local/china-targeted-resume/requirements.schema.json","title":"Requirements","type":"array","items":{"$ref":"#/$defs/requirement"},
-  "$defs":{"span":{"type":"object","additionalProperties":false,"required":["start_line","end_line"],"properties":{"start_line":{"type":"integer","minimum":1},"end_line":{"type":"integer","minimum":1},"start_column":{"type":["integer","null"],"minimum":1},"end_column":{"type":["integer","null"],"minimum":1}}},
-  "requirement":{"type":"object","additionalProperties":false,"required":["requirement_id","text","category","necessity","origin","confidence"],"properties":{"requirement_id":{"type":"string","minLength":1},"text":{"type":"string","minLength":1},"verbatim_quote":{"type":["string","null"]},"category":{"type":"string"},"necessity":{"enum":["required","preferred","responsibility","context","unknown"]},"priority":{"enum":["critical","high","medium","low"]},"origin":{"enum":["explicit","inferred"]},"source_ref":{"type":["string","null"]},"source_span":{"oneOf":[{"$ref":"#/$defs/span"},{"type":"null"}]},"inference_basis":{"type":["string","null"]},"confidence":{"type":"number","minimum":0,"maximum":1},"hard_gate":{"type":"boolean"},"keywords":{"type":"array","items":{"type":"string"}},"business_context":{"type":["string","null"]}},
-  "allOf":[{"if":{"properties":{"origin":{"const":"explicit"}},"required":["origin"]},"then":{"required":["verbatim_quote","source_span","source_ref"],"properties":{"verbatim_quote":{"type":"string","minLength":1},"source_span":{"$ref":"#/$defs/span"},"source_ref":{"type":"string","minLength":1},"inference_basis":{"type":"null"}}}},{"if":{"properties":{"origin":{"const":"inferred"}},"required":["origin"]},"then":{"required":["inference_basis","source_ref"],"properties":{"inference_basis":{"type":"string","minLength":1},"source_ref":{"type":"string","minLength":1},"verbatim_quote":{"type":"null"},"source_span":{"type":"null"},"hard_gate":{"const":false}}}}]}}
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.local/china-targeted-resume/requirements.schema.json",
+  "title": "Requirements",
+  "type": "array",
+  "items": {"$ref": "#/$defs/requirement"},
+  "$defs": {
+    "span": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["start_line", "end_line"],
+      "properties": {
+        "start_line": {"type": "integer", "minimum": 1},
+        "end_line": {"type": "integer", "minimum": 1},
+        "start_column": {"type": ["integer", "null"], "minimum": 1},
+        "end_column": {"type": ["integer", "null"], "minimum": 1}
+      }
+    },
+    "durationRequirement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scope", "unit", "required_min_years"],
+      "properties": {
+        "scope": {
+          "type": "string",
+          "minLength": 1,
+          "not": {"pattern": "(?:[/\\\\,，、;；]|\\b(?:and|or)\\b|[与及和])"}
+        },
+        "unit": {"const": "years"},
+        "required_min_years": {"type": "number", "exclusiveMinimum": 0},
+        "required_max_years": {"type": ["number", "null"], "exclusiveMinimum": 0}
+      }
+    },
+    "requirement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requirement_id", "text", "category", "necessity", "origin", "confidence"],
+      "properties": {
+        "requirement_id": {"type": "string", "minLength": 1},
+        "text": {"type": "string", "minLength": 1},
+        "verbatim_quote": {"type": ["string", "null"]},
+        "category": {"type": "string"},
+        "necessity": {"enum": ["required", "preferred", "responsibility", "context", "unknown"]},
+        "priority": {"enum": ["critical", "high", "medium", "low"]},
+        "origin": {"enum": ["explicit", "inferred"]},
+        "source_ref": {"type": ["string", "null"]},
+        "source_span": {"oneOf": [{"$ref": "#/$defs/span"}, {"type": "null"}]},
+        "inference_basis": {"type": ["string", "null"]},
+        "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+        "hard_gate": {"type": "boolean"},
+        "keywords": {"type": "array", "items": {"type": "string"}},
+        "business_context": {"type": ["string", "null"]},
+        "experience_duration": {
+          "oneOf": [
+            {"type": "null"},
+            {"$ref": "#/$defs/durationRequirement"}
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"origin": {"const": "explicit"}}, "required": ["origin"]},
+          "then": {
+            "required": ["verbatim_quote", "source_span", "source_ref"],
+            "properties": {
+              "verbatim_quote": {"type": "string", "minLength": 1},
+              "source_span": {"$ref": "#/$defs/span"},
+              "source_ref": {"type": "string", "minLength": 1},
+              "inference_basis": {"type": "null"}
+            }
+          }
+        },
+        {
+          "if": {"properties": {"origin": {"const": "inferred"}}, "required": ["origin"]},
+          "then": {
+            "required": ["inference_basis", "source_ref"],
+            "properties": {
+              "inference_basis": {"type": "string", "minLength": 1},
+              "source_ref": {"type": "string", "minLength": 1},
+              "verbatim_quote": {"type": "null"},
+              "source_span": {"type": "null"},
+              "hard_gate": {"const": false},
+              "experience_duration": {"type": "null"}
+            }
+          }
+        }
+      ]
+    }
+  }
 }

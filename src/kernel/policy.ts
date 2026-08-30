@@ -46,10 +46,11 @@ export interface RunRequest {
   readonly role_ref: string | Readonly<Record<string, unknown>> | null;
   readonly jd: Readonly<{ text: string | null; url: string | null; file: string | null }>;
   readonly application_constraints: Readonly<Record<string, unknown>> | readonly Readonly<Record<string, unknown>>[];
+  readonly experience_duration_diagnostics: readonly Readonly<Record<string, unknown>>[];
   readonly output_mode: OutputMode;
   readonly language: string;
   readonly include_extended_profile: boolean;
-  readonly template: "ats-simple" | "human-readable";
+  readonly template: "adaptive" | "ats-simple" | "human-readable";
   readonly persist_role_research: boolean;
   readonly export_roadmap_handoff: boolean;
   readonly refresh_external_sources: boolean;
@@ -453,10 +454,11 @@ export function validateRequestConstraints(value: unknown): RunRequest {
       file: (jd.file ?? null) as string | null,
     }),
     application_constraints: constraints as RunRequest["application_constraints"],
+    experience_duration_diagnostics: (request.experience_duration_diagnostics ?? []) as RunRequest["experience_duration_diagnostics"],
     output_mode: (request.output_mode ?? "targeted_application") as OutputMode,
     language: (request.language ?? "zh-CN") as string,
     include_extended_profile: (request.include_extended_profile ?? false) as boolean,
-    template: (request.template ?? "ats-simple") as RunRequest["template"],
+    template: (request.template ?? "adaptive") as RunRequest["template"],
     persist_role_research: (request.persist_role_research ?? false) as boolean,
     export_roadmap_handoff: (request.export_roadmap_handoff ?? false) as boolean,
     refresh_external_sources: (request.refresh_external_sources ?? false) as boolean,

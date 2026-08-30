@@ -26,6 +26,7 @@
       "required": [
         "variant",
         "base_name",
+        "template",
         "target_pages",
         "actual_pages",
         "underfilled",
@@ -38,6 +39,7 @@
       "properties": {
         "variant": {"type": "string"},
         "base_name": {"type": "string"},
+        "template": {"enum": ["ats-simple", "human-readable"]},
         "target_pages": {"type": "integer"},
         "actual_pages": {"type": "integer", "minimum": 1, "maximum": 6},
         "underfilled": {"type": "boolean"},

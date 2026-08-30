@@ -159,6 +159,7 @@ const TOPIC_TEXT: Readonly<Record<ResumeHelpTopic, readonly string[]>> = Object.
     "    -> /resume-audit resume-variants.json",
     "",
     "Runtime-held evidence, review, approval, and confirmation bodies are referenced by same-run digests. Do not resend or reconstruct them in compose requests.",
+    "After an explicit gap-planning request, export roadmap-handoff.json and invoke the separate china-resume-growth-roadmap Skill; plans never update current evidence or match state.",
   ]),
   privacy: Object.freeze([
     "Privacy modes",

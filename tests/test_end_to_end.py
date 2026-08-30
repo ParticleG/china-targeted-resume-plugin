@@ -48,6 +48,7 @@ BASE_OUTPUT_FILES = {
     "competencies.json",
     "application-constraints.json",
     "evidence-map.json",
+    "experience-duration-facts.json",
     "gaps.json",
     "application-recommendation.json",
     "confirmation-questions.md",
@@ -133,6 +134,7 @@ def _assert_full_contract(
         "competencies.json",
         "application-constraints.json",
         "evidence-map.json",
+        "experience-duration-facts.json",
         "gaps.json",
         "application-recommendation.json",
         "role-dossier-ir.json",
@@ -149,6 +151,16 @@ def _assert_full_contract(
     ]
     for filename in json_files:
         _json(run_dir / filename)
+    manifest = _json(run_dir / "resume-variants.json")
+    assert all(
+        item["template"] in {"ats-simple", "human-readable"}
+        for item in manifest["variants"]
+    )
+    gap_analysis = (
+        run_dir / "role-dossier" / "gap-analysis.md"
+    ).read_text(encoding="utf-8")
+    assert "## Application recommendation" in gap_analysis
+    assert "- Hard-constraint readiness:" in gap_analysis
     requirements = _json(run_dir / "requirements.json")
     mappings = _json(run_dir / "evidence-map.json")
     assert all(
@@ -280,12 +292,12 @@ def test_tier_a_complete_jd_full_run_direct_mapping_pdf_and_source_isolation(syn
         json.dumps(
             [
                 {
-                    "constraint_id": "CON-EXPERIENCE",
-                    "kind": "experience",
+                    "constraint_id": "CON-LOCATION",
+                    "kind": "location",
                     "hard_gate": True,
                     "status": "unsatisfied",
-                    "candidate_value": "4 years",
-                    "required_value": "5-10 years",
+                    "candidate_value": "Remote only",
+                    "required_value": "Three office days",
                 }
             ]
         ),

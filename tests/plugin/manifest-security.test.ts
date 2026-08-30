@@ -43,6 +43,7 @@ async function createRunFixture(): Promise<RunFixture> {
     schema_version: 1,
     variants: [{
       variant: "technical-two-page",
+      template: "human-readable",
       target_pages: 2,
       actual_pages: 1,
       audit_success: true,
@@ -66,6 +67,7 @@ describe("variant manifest filesystem boundary", () => {
     const fixture = await createRunFixture();
     const manifest = await readVariantManifest(fixture.manifestPath);
     expect(manifest.variants).toHaveLength(1);
+    expect(manifest.variants[0]?.template).toBe("human-readable");
     expect(await resolveVariantArtifacts(fixture.manifestPath, manifest, "document")).toEqual([{
       variant: "technical-two-page",
       path: fixture.documentPath,

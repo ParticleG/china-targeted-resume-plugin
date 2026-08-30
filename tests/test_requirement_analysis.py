@@ -32,6 +32,46 @@ def test_required_and_preferred_language_is_preserved_despite_repetition() -> No
     assert requirements[0].text == requirements[1].text
     assert keyword_review_signals(jd, minimum_count=2)
 
+def test_explicit_atomic_duration_is_structured_from_verbatim_quote() -> None:
+    [requirement] = parse_requirements(
+        "# Required qualifications\n"
+        "- At least 8 years of professional Python development experience.\n",
+        source_id="fixture-jd",
+    )
+
+    assert requirement.experience_duration is not None
+    assert requirement.experience_duration.scope == (
+        "professional Python development"
+    )
+    assert requirement.experience_duration.required_min_years == 8
+
+
+def test_compound_duration_requirement_fails_closed() -> None:
+    [requirement] = parse_requirements(
+        "# Required qualifications\n"
+        "- 5 years of Java and 8 years of total engineering experience.\n",
+        source_id="fixture-jd",
+    )
+
+    assert requirement.experience_duration is None
+
+
+def test_structured_duration_must_equal_verbatim_threshold(
+    requirement_factory,
+) -> None:
+    with pytest.raises(
+        ValidationError,
+        match="must exactly match the verbatim requirement",
+    ):
+        requirement_factory(
+            text="At least 8 years of professional Python development experience.",
+            verbatim_quote="At least 8 years of professional Python development experience.",
+            experience_duration={
+                "scope": "professional Python development",
+                "required_min_years": 5,
+            },
+        )
+
 
 def test_required_section_does_not_make_interest_statement_a_hard_gate() -> None:
     [requirement] = parse_requirements(

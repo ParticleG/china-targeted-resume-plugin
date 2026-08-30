@@ -7,7 +7,7 @@ from collections.abc import Iterable, Mapping
 import re
 from typing import Any
 
-from .models import Requirement
+from .models import Requirement, parse_atomic_experience_duration
 
 _HEADING = re.compile(r"^\s{0,3}(?:#{1,6}\s*)?([^:：]{1,80})[:：]?\s*$")
 _BULLET = re.compile(r"^\s*(?:[-*•·]|\d+[.)、])\s+")
@@ -189,6 +189,7 @@ def parse_requirements(jd_text: str, *, source_id: str = "current-jd") -> list[R
             "source_span": {"start_line": start, "end_line": end},
             "confidence": 1.0,
             "hard_gate": hard_gate,
+            "experience_duration": parse_atomic_experience_duration(quote),
         }))
     return result
 

@@ -28,8 +28,10 @@ from china_targeted_resume.provenance import build_confirmation_questions
 from china_targeted_resume.pipeline import (
     _EXTENDED_THREE_PAGE,
     _RECRUITER_ONE_PAGE,
+    _TECHNICAL_TWO_PAGE,
     _select_resume_records,
     _select_variant_records,
+    _template_for_variant,
 )
 
 
@@ -567,6 +569,58 @@ def test_variant_selection_deduplicates_normalized_visible_claims_globally() -> 
     assert len(selected) == 1
     assert " ".join(selected[0].safe_claim.split()).casefold() == (
         "built release controls for the platform."
+    )
+
+def test_targeted_variant_uses_only_mapped_confirmed_practice() -> None:
+    mapped = _evidence(
+        "ev-mapped",
+        "Implemented role-relevant release controls.",
+        source_path="personal-data/company-projects/relevant.md",
+        source_section="Personal work",
+    )
+    unmapped = _evidence(
+        "ev-unmapped",
+        "Implemented an unrelated community utility.",
+        source_path="personal-data/community-projects/unrelated.md",
+        source_section="Personal work",
+    )
+    study_only = _evidence(
+        "ev-study",
+        "Studied Kubernetes workload concepts.",
+        match_state="有知识无实践",
+        source_path="personal-data/personal-projects/study.md",
+        source_section="Personal work",
+    )
+    mapping = {
+        "requirement_id": "req-release",
+        "evidence_ids": ["ev-mapped", "ev-study"],
+        "resume_priority": 1.0,
+    }
+
+    selected = _select_variant_records(
+        MarkdownCareerV1Adapter(),
+        [mapped, unmapped, study_only],
+        [mapping],
+        [{"requirement_id": "req-release", "priority": "required"}],
+        OutputMode.TARGETED_APPLICATION,
+        _TECHNICAL_TWO_PAGE,
+    )
+
+    assert selected == [mapped]
+
+
+def test_adaptive_template_resolves_to_concrete_single_column_variants() -> None:
+    assert (
+        _template_for_variant("adaptive", ResumeVariant.RECRUITER_ONE_PAGE)
+        == "ats-simple"
+    )
+    assert (
+        _template_for_variant("adaptive", ResumeVariant.TECHNICAL_TWO_PAGE)
+        == "human-readable"
+    )
+    assert (
+        _template_for_variant("adaptive", ResumeVariant.EXTENDED_THREE_PAGE)
+        == "human-readable"
     )
 
 

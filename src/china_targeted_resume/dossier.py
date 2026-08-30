@@ -158,6 +158,35 @@ def _gaps_markdown(data: Mapping[str, Any]) -> str:
             f"{_md(item.get('job_impact'))} | {_md('; '.join(item.get('validation_direction') or []))} | "
             f"{_md('; '.join(item.get('roadmap_refs') or []))} |"
         )
+    recommendation_raw = data.get("application_recommendation")
+    if recommendation_raw is not None:
+        recommendation = _dump(recommendation_raw)
+        lines.extend(
+            [
+                "",
+                "## Application recommendation",
+                "",
+                f"- Decision: `{_md(recommendation.get('decision'))}`",
+                f"- Hard-constraint readiness: `{_md(recommendation.get('hard_constraint_readiness'))}`",
+                (
+                    "- Structured near-match requirements: "
+                    + (
+                        ", ".join(
+                            f"`{_md(value)}`"
+                            for value in recommendation.get(
+                                "near_match_requirements"
+                            )
+                            or []
+                        )
+                        or "none"
+                    )
+                ),
+                *[
+                    f"- Rationale: {_md(reason)}"
+                    for reason in recommendation.get("rationale") or []
+                ],
+            ]
+        )
     return "\n".join(lines)
 
 

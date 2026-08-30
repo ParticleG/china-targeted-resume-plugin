@@ -15,6 +15,7 @@ export type VariantArtifactKind = "document" | "pdf";
 
 export interface VariantManifestEntry {
   readonly variant: string;
+  readonly template: "ats-simple" | "human-readable";
   readonly targetPages: number;
   readonly actualPages?: number;
   readonly auditSuccess: boolean;
@@ -130,6 +131,13 @@ function parseEntry(value: unknown, index: number): VariantManifestEntry {
   if (typeof variant !== "string" || !/^[a-z][a-z0-9_-]{0,63}$/.test(variant)) {
     throw new ManifestContractError("INVALID_MANIFEST", `Variant ${index + 1} has an invalid identifier`);
   }
+  const template = record.template;
+  if (template !== "ats-simple" && template !== "human-readable") {
+    throw new ManifestContractError(
+      "INVALID_MANIFEST",
+      `Variant ${variant} has an invalid concrete template`,
+    );
+  }
   if (typeof record.audit_success !== "boolean" || typeof record.pdf_success !== "boolean") {
     throw new ManifestContractError("INVALID_MANIFEST", `Variant ${variant} is missing audit/PDF status`);
   }
@@ -150,6 +158,7 @@ function parseEntry(value: unknown, index: number): VariantManifestEntry {
   }
   return Object.freeze({
     variant,
+    template,
     targetPages: finiteInteger(record.target_pages, `Variant ${variant} target_pages`, 1),
     ...(actualPages === null || actualPages === undefined ? {} : { actualPages: actualPages as number }),
     auditSuccess: record.audit_success,
@@ -182,6 +191,7 @@ export async function readVariantManifest(manifestPath: string): Promise<Variant
 export function summarizeVariantManifest(manifest: VariantManifest): ManifestStatusSummary {
   const variants: VariantStatusSummary[] = manifest.variants.map((entry) => Object.freeze({
     variant: entry.variant,
+    template: entry.template,
     targetPages: entry.targetPages,
     ...(entry.actualPages === undefined ? {} : { actualPages: entry.actualPages }),
     auditSuccess: entry.auditSuccess,

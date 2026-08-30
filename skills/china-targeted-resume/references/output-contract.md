@@ -14,7 +14,7 @@ Create personal-data directories with `0700` and files with `0600`. Do not log b
 
 Every generation creates the recruiter one-page (`resume-recruiter-1p`) and technical two-page (`resume-technical-2p`) variants. Generate the extended three-page technical profile (`technical-profile-3p`) only when `include_extended_profile` or the CLI's `--include-extended-profile` is explicitly selected.
 
-`resume-variants.json` is the authoritative run manifest. Consumers must use its variant entries, page targets, actual page counts, validation results, artifact paths, and preview paths for discovery instead of guessing filenames.
+`resume-variants.json` is the authoritative run manifest. Consumers must use its variant entries, concrete template, page targets, actual page counts, validation results, artifact paths, and preview paths for discovery instead of guessing filenames.
 
 Each listed base name owns a complete artifact set:
 
@@ -44,7 +44,7 @@ Default visible order is contact/headline, two-to-three-line summary, evidence-b
 
 Target by selecting and ordering facts, not rewriting history. Prefer direct evidence, then clearly framed transferable evidence. Use JD terminology only when true. Preserve titles, dates, contribution level, metric precision, and confidentiality. Exclude unresolved claims/placeholders.
 
-The variants are independently composed for distinct readers and depth. Use one-column A4 templates. Each variant's page budget affects content selection before typography, and required minimum body font and margins remain enforced.
+The variants are independently composed for distinct readers and depth. Keep every A4 template semantic and single-column. The `adaptive` request strategy resolves to `ats-simple` for the recruiter one-page variant and `human-readable` for the technical two-page and optional extended three-page variants; each `ResumeDocument` and manifest entry records only the resolved concrete template. Each variant's page budget affects content selection before typography, and required minimum body font and margins remain enforced.
 
 ## Completion
 

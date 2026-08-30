@@ -374,6 +374,7 @@ describe("slash command safety and status", () => {
       schema_version: 1,
       variants: [{
         variant: "recruiter_one_page",
+        template: "ats-simple",
         target_pages: 1,
         actual_pages: 1,
         audit_success: true,

@@ -1,0 +1,158 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.local/china-targeted-resume/growth-roadmap.schema.json",
+  "title": "GrowthRoadmapDocument",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "created_at",
+    "source_handoff_sha256",
+    "planning_constraints",
+    "plans",
+    "post_completion_action"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "created_at": {"type": "string", "format": "date-time"},
+    "source_handoff_sha256": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "planning_constraints": {"$ref": "#/$defs/planningConstraints"},
+    "plans": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/plan"}
+    },
+    "post_completion_action": {
+      "const": "verify the real artifact, update the owning source with user approval, then run refresh-match"
+    }
+  },
+  "$defs": {
+    "planningConstraints": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hours_per_week", "available_environment", "preferred_language"],
+      "properties": {
+        "deadline": {"type": ["string", "null"], "format": "date"},
+        "hours_per_week": {"type": "number", "exclusiveMinimum": 0, "maximum": 168},
+        "available_environment": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "preferred_language": {"type": "string", "minLength": 1},
+        "budget_cny": {"type": ["number", "null"], "minimum": 0}
+      }
+    },
+    "stage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "stage",
+        "objective",
+        "prerequisite_gap_ids",
+        "work_items",
+        "expected_artifacts",
+        "pass_criteria",
+        "effort_hours_min",
+        "effort_hours_max",
+        "failure_retry"
+      ],
+      "properties": {
+        "stage": {"enum": ["baseline", "learn", "practice", "verify", "record", "refresh"]},
+        "objective": {"type": "string", "minLength": 1},
+        "prerequisite_gap_ids": {"type": "array", "items": {"type": "string"}},
+        "work_items": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+        "expected_artifacts": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+        "pass_criteria": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+        "effort_hours_min": {"type": "number", "exclusiveMinimum": 0},
+        "effort_hours_max": {"type": "number", "exclusiveMinimum": 0},
+        "failure_retry": {"type": "string", "minLength": 1}
+      }
+    },
+    "resource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "title",
+        "publisher",
+        "url",
+        "accessed_at",
+        "stage",
+        "source_authority",
+        "relevance"
+      ],
+      "properties": {
+        "title": {"type": "string", "minLength": 1},
+        "publisher": {"type": "string", "minLength": 1},
+        "url": {"type": "string", "format": "uri", "pattern": "^https://"},
+        "accessed_at": {"type": "string", "format": "date"},
+        "stage": {"enum": ["learn", "practice", "verify"]},
+        "source_authority": {
+          "enum": [
+            "official_documentation",
+            "official_tutorial",
+            "standard",
+            "maintainer_guide",
+            "reputable_course_provider"
+          ]
+        },
+        "relevance": {"type": "string", "minLength": 1}
+      }
+    },
+    "plan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "gap_id",
+        "requirement_id",
+        "source_role_refs",
+        "match_state",
+        "severity",
+        "priority_reason",
+        "target_capability",
+        "prerequisite_gap_ids",
+        "baseline_evidence_refs",
+        "suggested_artifacts",
+        "verification_signals",
+        "target_owning_file",
+        "stages",
+        "resources",
+        "completion_does_not_change_match_state"
+      ],
+      "properties": {
+        "gap_id": {"type": "string", "minLength": 1},
+        "requirement_id": {"type": ["string", "null"]},
+        "source_role_refs": {"type": "array", "items": {"type": "string"}},
+        "match_state": {"enum": ["可迁移经验", "有知识无实践", "明确缺口"]},
+        "severity": {"enum": ["Critical", "Major", "Minor"]},
+        "priority_reason": {"type": "string", "minLength": 1},
+        "target_capability": {"type": "string", "minLength": 1},
+        "prerequisite_gap_ids": {"type": "array", "items": {"type": "string"}},
+        "baseline_evidence_refs": {"type": "array", "items": {"type": "string"}},
+        "suggested_artifacts": {"type": "array", "items": {"type": "string"}},
+        "verification_signals": {"type": "array", "items": {"type": "string"}},
+        "target_owning_file": {"type": "string", "minLength": 1},
+        "stages": {
+          "type": "array",
+          "minItems": 6,
+          "maxItems": 6,
+          "prefixItems": [
+            {"allOf": [{"$ref": "#/$defs/stage"}, {"properties": {"stage": {"const": "baseline"}}}]},
+            {"allOf": [{"$ref": "#/$defs/stage"}, {"properties": {"stage": {"const": "learn"}}}]},
+            {"allOf": [{"$ref": "#/$defs/stage"}, {"properties": {"stage": {"const": "practice"}}}]},
+            {"allOf": [{"$ref": "#/$defs/stage"}, {"properties": {"stage": {"const": "verify"}}}]},
+            {"allOf": [{"$ref": "#/$defs/stage"}, {"properties": {"stage": {"const": "record"}}}]},
+            {"allOf": [{"$ref": "#/$defs/stage"}, {"properties": {"stage": {"const": "refresh"}}}]}
+          ],
+          "items": false
+        },
+        "resources": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/resource"}
+        },
+        "completion_does_not_change_match_state": {"const": true}
+      }
+    }
+  }
+}

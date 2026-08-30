@@ -13,10 +13,15 @@
     "role_ref": {"type": ["string", "object", "null"]},
     "jd": {"$ref": "#/$defs/jd"},
     "application_constraints": {"oneOf": [{"type": "object"}, {"type": "array", "items": {"type": "object"}}], "default": {}},
+    "experience_duration_diagnostics": {
+      "type": "array",
+      "default": [],
+      "items": {"$ref": "#/$defs/durationBinding"}
+    },
     "output_mode": {"enum": ["targeted_application", "public_portfolio", "master_resume"], "default": "targeted_application"},
     "language": {"type": "string", "default": "zh-CN"},
     "include_extended_profile": {"type": "boolean", "default": false},
-    "template": {"enum": ["ats-simple", "human-readable"], "default": "ats-simple"},
+    "template": {"enum": ["adaptive", "ats-simple", "human-readable"], "default": "adaptive"},
     "persist_role_research": {"type": "boolean", "default": false},
     "export_roadmap_handoff": {"type": "boolean", "default": false},
     "refresh_external_sources": {"type": "boolean", "default": false},
@@ -27,6 +32,50 @@
       "type": "object", "additionalProperties": false,
       "properties": {"text": {"type": ["string", "null"]}, "url": {"type": ["string", "null"], "format": "uri"}, "file": {"type": ["string", "null"]}},
       "default": {}
+    },
+    "durationBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requirement_id", "diagnostic"],
+      "properties": {
+        "requirement_id": {"type": "string", "minLength": 1},
+        "diagnostic": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "candidate_scope",
+            "required_scope",
+            "unit",
+            "candidate_years",
+            "required_min_years",
+            "evidence_refs",
+            "checked_at"
+          ],
+          "properties": {
+            "candidate_scope": {
+              "type": "string",
+              "minLength": 1,
+              "not": {"pattern": "(?:[/\\\\,，、;；]|\\b(?:and|or)\\b|[与及和])"}
+            },
+            "required_scope": {
+              "type": "string",
+              "minLength": 1,
+              "not": {"pattern": "(?:[/\\\\,，、;；]|\\b(?:and|or)\\b|[与及和])"}
+            },
+            "unit": {"const": "years"},
+            "candidate_years": {"type": "number", "minimum": 0},
+            "required_min_years": {"type": "number", "exclusiveMinimum": 0},
+            "required_max_years": {"type": ["number", "null"], "exclusiveMinimum": 0},
+            "evidence_refs": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {"type": "string", "minLength": 1}
+            },
+            "checked_at": {"type": "string", "format": "date-time"}
+          }
+        }
+      }
     }
   }
 }

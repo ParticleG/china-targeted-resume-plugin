@@ -15,6 +15,7 @@ import {
   type SessionCleanupResult,
   type SourceSliceRequest,
 } from "../../src/plugin/privacy";
+import { assertSafeMetadata } from "../../src/plugin/privacy/guards.ts";
 
 const uid = (): number => {
   const candidate = (process as typeof process & { getuid?: () => number }).getuid;
@@ -115,6 +116,15 @@ const request = (overrides: Partial<SourceSliceRequest> = {}): SourceSliceReques
 });
 
 describe("run-local privacy state", () => {
+  test("opaque run identifiers may contain hexadecimal f6 substrings", () => {
+    expect(() => assertSafeMetadata({
+      runId: "ctr-aaaaaaaa-f6aa-bbbb-cccc-dddddddddddd",
+    }, "authorization")).not.toThrow();
+    expect(() => assertSafeMetadata({
+      purpose: "F6 restricted source",
+    }, "authorization")).toThrow();
+  });
+
   test("metadata-only is an immutable default for every matrix consumer", () => {
     const state = createRunPrivacyState({ runId: "run-default", startedAt: "2026-08-21T00:00:00.000Z" });
     const consumers = ["main", "source-mapper", "role-analyst", "requirement-reviewer", "evidence-reviewer", "contribution-reviewer", "privacy-reviewer", "resume-advisor"] as const;

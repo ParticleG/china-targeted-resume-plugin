@@ -154,6 +154,7 @@
         {
           "variant": "recruiter-one-page",
           "base_name": "resume-recruiter-1p",
+          "template": "ats-simple",
           "target_pages": 1,
           "actual_pages": 1,
           "underfilled": true,
@@ -175,6 +176,7 @@
         {
           "variant": "technical-two-page",
           "base_name": "resume-technical-2p",
+          "template": "human-readable",
           "target_pages": 2,
           "actual_pages": 2,
           "underfilled": true,
@@ -196,6 +198,7 @@
         {
           "variant": "extended-three-page",
           "base_name": "technical-profile-3p",
+          "template": "human-readable",
           "target_pages": 3,
           "actual_pages": 3,
           "underfilled": true,
@@ -223,6 +226,7 @@
         {
           "variant": "recruiter-one-page",
           "base_name": "resume-recruiter-1p",
+          "template": "ats-simple",
           "target_pages": 1,
           "actual_pages": 1,
           "underfilled": true,
@@ -244,6 +248,7 @@
         {
           "variant": "technical-two-page",
           "base_name": "resume-technical-2p",
+          "template": "human-readable",
           "target_pages": 2,
           "actual_pages": 4,
           "underfilled": false,

@@ -12,16 +12,23 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict
 
 from china_targeted_resume.models import (
+    CandidateExperienceDurationFact,
     EvidenceCandidate,
     EvidenceMapping,
     EvidenceRecord,
+    ExperienceDurationDiagnosticBinding,
     FactState,
     Freshness,
+    Requirement,
+    RequirementOrigin,
+    parse_candidate_experience_duration_fact,
+    normalize_experience_scope,
     RoleMatchState,
 )
 from china_targeted_resume.policy import apply_evidence_policy
 
 
+NEAR_MATCH_EXPERIENCE_SHORTFALL = 0.25
 _APPROXIMATE = re.compile(r"(?:约|大约|近|超过|不少于|approximately|about|around|roughly|~|≈)", re.I)
 _RANGE = re.compile(r"(?:\b\d+(?:\.\d+)?\s*[-–—~至到]\s*\d+(?:\.\d+)?\b|数十|数百|several|between)", re.I)
 _STAGE = re.compile(r"(?:阶段|试点|原型|PoC|pilot|prototype|phase|截至|at the time)", re.I)
@@ -158,6 +165,193 @@ def _get(value: Any, name: str, default: Any = None) -> Any:
         return value.get(name, default)
     return getattr(value, name, default)
 
+def assess_experience_duration_near_match(
+    mapping: EvidenceMapping | Mapping[str, Any],
+    requirement: Requirement | Mapping[str, Any],
+    records: Sequence[EvidenceRecord | Mapping[str, Any]] = (),
+    *,
+    maximum_shortfall: float = NEAR_MATCH_EXPERIENCE_SHORTFALL,
+) -> tuple[float, float, float] | None:
+    """Diagnose one explicit duration only from owning candidate facts."""
+
+    if not 0 <= maximum_shortfall < 1:
+        raise ValueError("maximum_shortfall must be in [0, 1)")
+    canonical_mapping = (
+        mapping
+        if isinstance(mapping, EvidenceMapping)
+        else EvidenceMapping.model_validate(mapping)
+    )
+    canonical_requirement = (
+        requirement
+        if isinstance(requirement, Requirement)
+        else Requirement.model_validate(requirement)
+    )
+    diagnostic = canonical_mapping.experience_duration_diagnostic
+    threshold = canonical_requirement.experience_duration
+    if (
+        diagnostic is None
+        or threshold is None
+        or canonical_requirement.origin is not RequirementOrigin.EXPLICIT
+        or canonical_requirement.requirement_id
+        != canonical_mapping.requirement_id
+        or normalize_experience_scope(diagnostic.required_scope)
+        != normalize_experience_scope(threshold.scope)
+        or diagnostic.unit != threshold.unit
+        or diagnostic.required_min_years
+        != threshold.required_min_years
+        or diagnostic.required_max_years
+        != threshold.required_max_years
+    ):
+        return None
+    records_by_id = {
+        record.evidence_id: record
+        for raw in records
+        for record in [
+            raw
+            if isinstance(raw, EvidenceRecord)
+            else EvidenceRecord.model_validate(raw)
+        ]
+    }
+    for evidence_id in diagnostic.evidence_refs:
+        record = records_by_id.get(evidence_id)
+        if record is None or record.experience_duration_fact is None:
+            return None
+        fact = record.experience_duration_fact
+        if (
+            normalize_experience_scope(fact.scope)
+            != normalize_experience_scope(diagnostic.candidate_scope)
+            or fact.unit != diagnostic.unit
+            or fact.years != diagnostic.candidate_years
+            or fact.checked_at != diagnostic.checked_at
+        ):
+            return None
+    shortfall = (
+        threshold.required_min_years - diagnostic.candidate_years
+    ) / threshold.required_min_years
+    if shortfall > maximum_shortfall:
+        return None
+    return (
+        diagnostic.candidate_years,
+        threshold.required_min_years,
+        shortfall,
+    )
+
+
+def bind_experience_duration_diagnostics(
+    mappings: Sequence[EvidenceMapping | Mapping[str, Any]],
+    requirements: Sequence[Requirement | Mapping[str, Any]],
+    records: Sequence[EvidenceRecord | Mapping[str, Any]],
+    bindings: Sequence[
+        ExperienceDurationDiagnosticBinding | Mapping[str, Any]
+    ],
+) -> list[EvidenceMapping]:
+    """Bind duration diagnostics only after revalidating owning evidence facts."""
+
+    canonical_mappings = [
+        mapping
+        if isinstance(mapping, EvidenceMapping)
+        else EvidenceMapping.model_validate(mapping)
+        for mapping in mappings
+    ]
+    if not bindings:
+        return canonical_mappings
+    canonical_requirements = {
+        requirement.requirement_id: requirement
+        for raw in requirements
+        for requirement in [
+            raw
+            if isinstance(raw, Requirement)
+            else Requirement.model_validate(raw)
+        ]
+    }
+    canonical_records = {
+        record.evidence_id: record
+        for raw in records
+        for record in [
+            raw
+            if isinstance(raw, EvidenceRecord)
+            else EvidenceRecord.model_validate(raw)
+        ]
+    }
+    canonical_bindings = [
+        binding
+        if isinstance(binding, ExperienceDurationDiagnosticBinding)
+        else ExperienceDurationDiagnosticBinding.model_validate(binding)
+        for binding in bindings
+    ]
+    binding_ids = [binding.requirement_id for binding in canonical_bindings]
+    if len(binding_ids) != len(set(binding_ids)):
+        raise ValueError(
+            "experience duration diagnostics must bind each requirement at most once"
+        )
+    mapping_by_id = {
+        mapping.requirement_id: mapping
+        for mapping in canonical_mappings
+    }
+    for binding in canonical_bindings:
+        requirement = canonical_requirements.get(binding.requirement_id)
+        if requirement is None:
+            raise ValueError(
+                f"experience duration diagnostic references unknown requirement: {binding.requirement_id}"
+            )
+        if requirement.origin is not RequirementOrigin.EXPLICIT:
+            raise ValueError(
+                "experience duration diagnostics require explicit requirements"
+            )
+        threshold = requirement.experience_duration
+        if threshold is None:
+            raise ValueError(
+                "experience duration diagnostic requires a verbatim-backed requirement threshold"
+            )
+        diagnostic = binding.diagnostic
+        if (
+            normalize_experience_scope(diagnostic.required_scope)
+            != normalize_experience_scope(threshold.scope)
+            or diagnostic.unit != threshold.unit
+            or diagnostic.required_min_years
+            != threshold.required_min_years
+            or diagnostic.required_max_years
+            != threshold.required_max_years
+        ):
+            raise ValueError(
+                "experience duration diagnostic required scope and threshold must match the verbatim requirement"
+            )
+        mapping = mapping_by_id.get(binding.requirement_id)
+        if mapping is None:
+            raise ValueError(
+                f"experience duration diagnostic has no evidence mapping: {binding.requirement_id}"
+            )
+        for evidence_id in diagnostic.evidence_refs:
+            record = canonical_records.get(evidence_id)
+            if record is None:
+                raise ValueError(
+                    f"experience duration diagnostic references unknown evidence record: {evidence_id}"
+                )
+            fact = record.experience_duration_fact
+            if fact is None:
+                raise ValueError(
+                    f"experience duration diagnostic evidence has no owning duration fact: {evidence_id}"
+                )
+            if (
+                normalize_experience_scope(fact.scope)
+                != normalize_experience_scope(diagnostic.candidate_scope)
+                or fact.unit != diagnostic.unit
+                or fact.years != diagnostic.candidate_years
+                or fact.checked_at != diagnostic.checked_at
+            ):
+                raise ValueError(
+                    f"experience duration diagnostic candidate value does not match owning evidence: {evidence_id}"
+                )
+        payload = mapping.model_dump(mode="python")
+        payload["experience_duration_diagnostic"] = diagnostic
+        mapping_by_id[binding.requirement_id] = (
+            EvidenceMapping.model_validate(payload)
+        )
+    return [
+        mapping_by_id[mapping.requirement_id]
+        for mapping in canonical_mappings
+    ]
+
 
 def _state(value: Any) -> RoleMatchState:
     if isinstance(value, RoleMatchState):
@@ -268,11 +462,27 @@ def build_evidence_record(
     claim = item.proposed_claim
     if not claim.strip():
         return None
-    checked_at = item.source.accessed_at
+    duration_data = parse_candidate_experience_duration_fact(claim)
+    duration_fact = (
+        CandidateExperienceDurationFact.model_validate(duration_data)
+        if duration_data is not None and item.source_span is not None
+        else None
+    )
+    checked_at = (
+        duration_fact.checked_at
+        if duration_fact is not None
+        else item.source.accessed_at
+    )
     freshness = Freshness(
-        dynamic=item.fact_state == FactState.F3,
+        dynamic=(
+            item.fact_state == FactState.F3
+            or duration_fact is not None
+        ),
         checked_at=checked_at,
-        stale=item.fact_state == FactState.F3 and checked_at is None,
+        stale=(
+            item.fact_state == FactState.F3
+            and checked_at is None
+        ),
     )
     evidence_id = "ev-" + hashlib.sha256(
         f"{item.candidate_id}\0{item.source.path}\0{item.source.section}\0{item.source.source_hash}".encode()
@@ -293,6 +503,7 @@ def build_evidence_record(
         safe_claim=claim,
         forbidden_expansions=_forbidden_expansions(claim),
         freshness=freshness,
+        experience_duration_fact=duration_fact,
     )
 
 
@@ -338,6 +549,45 @@ def _mapping_for(requirement: Any, records: Sequence[EvidenceRecord]) -> Evidenc
     if any(record.freshness.dynamic for record in selected):
         risks.append("Dynamic evidence requires current verification.")
     usable_ids = [record.evidence_id for record in selected if not record.freshness.stale]
+    duration_threshold = _get(requirement, "experience_duration")
+    if duration_threshold is not None:
+        duration_scope = str(
+            _get(duration_threshold, "scope", "")
+        )
+        duration_records = [
+            record
+            for record in linked
+            if record.experience_duration_fact is not None
+            and normalize_experience_scope(
+                record.experience_duration_fact.scope
+            )
+            == normalize_experience_scope(duration_scope)
+            and _state(record.match_state)
+            in {
+                RoleMatchState.DIRECT_EVIDENCE,
+                RoleMatchState.TRANSFERABLE_EXPERIENCE,
+            }
+            and not record.freshness.stale
+        ]
+        if duration_records:
+            usable_ids = list(
+                dict.fromkeys(
+                    [
+                        *usable_ids,
+                        *(
+                            record.evidence_id
+                            for record in duration_records
+                        ),
+                    ]
+                )
+            )
+            risks.append(
+                "Validate the checked atomic experience-duration fact against the explicit threshold."
+            )
+        else:
+            missing_evidence.append(
+                "Add one checked atomic duration fact for the explicit experience threshold."
+            )
     if not usable_ids:
         best = RoleMatchState.PENDING_CONFIRMATION
         missing_evidence = ["Current eligible evidence is required."]
