@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-`china-targeted-resume` is both a Python 3.14 command-line application and an installable OMP Skill. It converts a read-only Markdown career knowledge base into evidence-grounded resumes for target companies and roles in China, then produces ATS text, Markdown, HTML, PDF, audit, provenance, gap, and role-dossier artifacts.
+`china-targeted-resume` is delivered through two separately installed surfaces: a Python 3.14 command-line application and an OMP Plugin that bundles the Extension, commands, typed tools, agents, and canonical Skill. It converts a read-only Markdown career knowledge base into evidence-grounded resumes for target companies and roles in China, then produces ATS text, Markdown, HTML, PDF, audit, provenance, gap, and role-dossier artifacts.
 
 The core is deterministic: source discovery, requirement analysis, evidence mapping, policy checks, composition, rendering, and PDF inspection do not depend on an LLM. Preserve these invariants:
 
@@ -16,14 +16,14 @@ The core is deterministic: source discovery, requirement analysis, evidence mapp
 
 1. `src/china_targeted_resume/cli.py` parses subcommands into strict Pydantic request models. Successful output is JSON on stdout; expected user errors are JSON on stderr with exit status 2.
 2. `src/china_targeted_resume/pipeline.py::Pipeline` validates source/output boundaries and orchestrates domain modules. Its `adapter_factory` constructor argument is the primary dependency-injection seam.
-3. `adapters/markdown_career_v1.py` discovers companies, roles, policies, and metadata. Retrieval is two-stage: metadata/title/heading discovery, then minimal owning-section reads. Persistent manifests contain hashes and navigation metadata, not source bodies.
-4. `target_resolution.py` assigns Tier A-D target context. `role_analysis/` parses job descriptions, classifies requirements, detects anomalies, and builds competencies. Requirements, competencies, application constraints, and candidate evidence remain separate models.
-5. `evidence.py`, `policy.py`, `constraints.py`, `gaps.py`, and `application_advice.py` validate source-backed evidence, apply F1-F6/P0-P3 disclosure gates, map canonical match states, derive gaps, and create recommendations. Visible claims must retain provenance IDs.
+3. `adapters/markdown_career_v1.py` discovers companies, roles, policies, and metadata. Retrieval is two-stage: fence-aware metadata/title/heading discovery, then minimal owning-section reads. Source maps are untrusted until validation re-opens the source and verifies identity, hashes, spans, exact quotes, and policy metadata. Persistent manifests contain hashes and navigation metadata, not source bodies.
+4. `target_resolution.py` assigns Tier A-D target context. A supplied non-empty JD defaults to complete/Tier A; explicit `complete=False` or `--jd-incomplete` keeps an exact company/role at Tier B while parsing the excerpt's explicit requirements. Tier D is rejected except for `master_resume`. `role_analysis/` classifies requirements and detects anomalies; requirements, competencies, application constraints, and candidate evidence remain separate models.
+5. `evidence.py`, `policy.py`, `constraints.py`, `gaps.py`, and `application_advice.py` validate source-backed evidence, apply F1-F6/P0-P3 disclosure gates, map canonical match states, derive gaps, and create recommendations. Compound technology requirements need direct named-technology anchors; coverage inventories and tech-stack headings do not prove practical use. Visible claims must retain provenance IDs.
 6. `dossier.py` writes the run-local seven-file role dossier. `composition.py` converts eligible records into the canonical `ResumeDocument`; `audit.py` validates truthfulness, privacy, ATS structure, and provenance.
 7. `rendering/html.py` renders local Jinja templates; `rendering/pdf.py` uses headless Chromium; `rendering/inspect.py` checks the real PDF and preview. Semantic compaction removes lower-priority content before violating minimum font or margin constraints.
 8. `io.py` owns path-boundary checks, private directory creation, atomic writes, and non-overwriting run allocation. Use these helpers instead of ad hoc file writes.
 
-`skills/china-targeted-resume/SKILL.md` is the canonical natural-language orchestration layer, and its colocated `references/` directory owns detailed policy and data contracts. Authority is boundary-specific: root Draft 2020-12 schemas and the deterministic TypeScript kernel own ported contracts; Python remains executable authority for Markdown parsing, composition/audit, Chromium rendering, PDF inspection, and the standalone CLI. See `docs/final-product-boundary.md`.
+The installable OMP Plugin is the OMP product surface; `skills/china-targeted-resume/SKILL.md` is its canonical natural-language orchestration layer, and the colocated `references/` directory owns detailed policy and data contracts. Authority is boundary-specific: root Draft 2020-12 schemas and the deterministic TypeScript kernel own ported contracts; Python remains executable authority for Markdown parsing, source-map/IR validation, composition/audit, Chromium rendering, PDF inspection, and the standalone CLI. See `docs/final-product-boundary.md`.
 
 ## Key Directories
 
@@ -68,12 +68,11 @@ uv run china-targeted-resume generate \
   --jd-file /path/to/job-description.md \
   --mode targeted_application \
   --language zh-CN \
-  --pages 2 \
   --template ats-simple \
   --output "$OUTPUT_ROOT"
 ```
 
-Useful staged commands are `list-companies`, `list-roles`, `analyze-role`, `build-evidence-map`, `validate-content`, `render`, `inspect-pdf`, `refresh-role`, `refresh-match`, and `export-roadmap-handoff`; inspect their exact arguments with `--help`.
+Useful staged commands are `list-companies`, `list-roles`, `analyze-role`, `build-evidence-map`, `validate-content`, `render`, `inspect-pdf`, `refresh-role`, `refresh-match`, and `export-roadmap-handoff`. Standalone deterministic IR boundaries are `discover-source-structure`, `validate-source-map`, `validate-role-input`, `validate-evidence-input`, `approve-claims`, and `generate-from-ir`; inspect exact arguments with `--help`.
 
 Prefer the top-level CLI. The similarly named `scripts/render_pdf.py`, `scripts/inspect_pdf.py`, and `scripts/validate_evidence.py` accept one positional JSON file or JSON on stdin, not the top-level CLI flags.
 
@@ -88,6 +87,10 @@ TypeScript uses the configured `tsc --noEmit` check. No formatter or linter is c
 - Treat run artifacts as explicit state. Avoid module-level mutable state, hidden caches, implicit network calls, and writes outside the requested output tree.
 - Fail closed at trust boundaries. Raise specific domain or validation errors (`PipelineError`, `SelectionRequired`, `OutputBoundaryError`, `ValidationError`, or `ValueError`) and let the CLI translate expected failures into machine-readable JSON.
 - Preserve stable IDs, source hashes, source spans, evidence IDs, claim IDs, and provenance links through transformations. Targeting may change selection/order, never the underlying fact wording or attribution.
+- Treat source maps as untrusted metadata until validation re-opens the source and verifies source identity, hashes, spans, exact quotes, and policy fields.
+- Preserve JD completeness semantics: a supplied non-empty JD defaults to complete, while `complete=False`/`--jd-incomplete` must retain parsed explicit requirements without promoting the target above Tier B.
+- A non-empty standalone application-constraint list replaces the JD-derived set. Required-section placement alone never sets `hard_gate`; preserve explicit constraint semantics and evidence.
+- For compound technology requirements, require direct evidence for enough named technologies. Coverage inventories and tech-stack headings may aid discovery but never prove skill use.
 - Use secure atomic writers from `io.py`. Do not replace private modes, source/output separation, symlink/path traversal checks, or non-overwriting semantics with ordinary `Path.write_text` calls.
 - Keep templates semantic and single-column. `human-readable.html.j2` reuses the ATS template structure; visual differences belong in CSS rather than duplicated document logic.
 
@@ -100,10 +103,12 @@ TypeScript uses the configured `tsc --noEmit` check. No formatter or linter is c
 - `src/china_targeted_resume/pipeline.py`: end-to-end orchestration and public stage methods.
 - `src/china_targeted_resume/models.py`: canonical Pydantic models and enums.
 - `src/china_targeted_resume/io.py`: secure, atomic artifact I/O.
+- `src/china_targeted_resume/ir.py` and `validation.py`: normalized IR models, source revalidation, approval aggregation, and provenance closure.
 - `skills/china-targeted-resume/SKILL.md`: canonical OMP Skill trigger and orchestration instructions.
 - `README.md`: supported installation, CLI, build, and troubleshooting commands.
 - `schemas/request.schema.json` and `schemas/resume-document.schema.json`: principal external request and renderer boundaries.
 - `tests/conftest.py`: shared synthetic-source and model-factory fixtures.
+- `tests/test_ir_cli.py` and `tests/test_ir_validation.py`: standalone deterministic IR command and trust-boundary contracts.
 - `tests/test_end_to_end.py`: complete artifact, privacy, permission, source immutability, packaging, and real-PDF contract.
 
 ## Runtime/Tooling Preferences
@@ -124,6 +129,6 @@ TypeScript uses the configured `tsc --noEmit` check. No formatter or linter is c
 - Python tests use module-level `test_<observable_contract>` functions in `tests/test_<area>.py`; Plugin tests use Bun `test`/`describe` in `tests/plugin/*.test.ts`. No custom markers or CI workflow are defined.
 - `tests/conftest.py` exposes a session-scoped read-only `synthetic_career_db`, a per-test `synthetic_db_copy`, and Pydantic model factories. Tests that mutate source fixtures must use `synthetic_db_copy` with `tmp_path`.
 - Keep fixtures fully synthetic, Markdown-only, and safe for publication. Use `.invalid` domains; never add production credentials or personal data.
-- Test observable boundaries: authoritative schemas, cross-language golden contracts, traversal/symlink rejection, source immutability, evidence/provenance invariants, private modes, non-overwriting output, artifact schemas, Plugin backend routing, and CLI stdout/stderr contracts.
+- Test observable boundaries: authoritative schemas, cross-language golden contracts, source-map freshness/identity/hash/span/quote validation, traversal/symlink rejection, source immutability, JD completeness and Tier D behavior, application-constraint precedence and hard-gate semantics, compound-technology evidence, coverage-inventory non-evidence, evidence/provenance invariants, private modes, non-overwriting output, artifact schemas, Plugin backend routing, and CLI stdout/stderr contracts.
 - `tests/test_end_to_end.py` exercises actual HTML/PDF/PNG output and packaging rather than mocks. It requires Chromium, a local CJK font, and PyMuPDF, and verifies source-tree SHA-256 snapshots before/after generation.
 - `coverage[toml]` is installed, but the repository defines no coverage configuration, command, or minimum threshold. Do not report or enforce an invented target.

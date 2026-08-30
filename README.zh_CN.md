@@ -1,5 +1,7 @@
 # China Targeted Resume
 
+[English](README.md) | 简体中文
+
 `china-targeted-resume` 可将只读的 Markdown 职业知识库转换为面向目标公司和岗位、以证据为依据的简历。它会分析岗位要求、映射有来源支持的个人证据、记录差距与约束、审计简历中可见的陈述，并在本地渲染适合 ATS（Applicant Tracking System，申请人跟踪系统）的 PDF。
 
 本仓库提供两个需要分别安装、均受支持的使用界面：
@@ -61,6 +63,8 @@ OUTPUT_ROOT/
 - 持久化索引只包含导航元数据和哈希，不包含源文件正文或联系方式。
 - 公司调研内容绝不会变成候选人的个人经历。
 - 未验证、有冲突、私密、过时或缺乏支持的陈述会被省略，或转换为待确认问题。
+- 文本位于“必需”章节并不自动使对应申请约束成为硬门槛；必须明确评估 `hard_gate`。
+- 复合技术要求必须由足够多的具名技术直接证据支持。技术栈标题或覆盖清单不能证明实际使用经验。
 - 生成的 PDF 只有在确定性的内容检查与 PDF 检查全部通过后才会被接受。
 
 ## 安装与环境要求
@@ -466,7 +470,7 @@ uv run china-targeted-resume list-roles \
 
 ## 教程：根据完整且当前有效的 JD 生成简历
 
-完整且当前有效的职位描述会产生 Tier A、`exact-current-jd` 分析。必须且只能提供 `--jd-file`、`--jd-text` 或 `--jd-url` 中的一个参数。
+提供的非空职位描述默认视为完整，并产生 Tier A、`exact-current-jd` 分析。必须且只能提供 `--jd-file`、`--jd-text` 或 `--jd-url` 中的一个参数。当 JD 本身就是权威目标输入时，可以省略 `--company` 和 `--role`；但提供确切的源标识符有助于改进目标命名和源关联。
 
 使用本地 UTF-8 JD 文件：
 
@@ -513,6 +517,24 @@ uv run china-targeted-resume generate \
   --output "$OUTPUT_ROOT"
 ```
 
+## 教程：使用不完整 JD 摘录和独立申请约束
+
+提供的 JD 默认视为完整。只有当文本、文件或 URL 是摘录时，才添加 `--jd-incomplete`；该标志要求同时提供一个 JD 来源。如果公司和岗位均已精确选择，解析器仍会从摘录中提取显式要求，但目标解析保持为 Tier B，覆盖情况仍为不确定：
+
+```bash
+uv run china-targeted-resume generate \
+  --source "$SOURCE_ROOT" \
+  --company COMPANY \
+  --role "ROLE TITLE" \
+  --jd-file /path/to/job-description-excerpt.md \
+  --jd-incomplete \
+  --application-constraints-file /path/to/application-constraints.json \
+  --mode targeted_application \
+  --output "$OUTPUT_ROOT"
+```
+
+`--application-constraints-file` 必须包含一个符合 [`schemas/application-constraints.schema.json`](schemas/application-constraints.schema.json) 的私有 JSON 数组。非空数组会替换从 JD 解析出的约束；空数组会保留解析结果。应根据具体约束语义和支持性评估设置 `hard_gate`，不能仅因文本位于“必需”标题下就将其设为 `true`。
+
 ## 教程：仅知道岗位时生成简历
 
 如果没有完整且当前有效的 JD，请省略所有 JD 选项。当源中包含确切岗位以及注明日期的公司调研资料时，流水线会以 Tier B 继续执行：
@@ -529,6 +551,8 @@ uv run china-targeted-resume generate \
 ```
 
 Tier B 输出会在审计产物中记录来源时效、缺失的要求、冲突、推断侧重点以及覆盖范围限制，而不会将这些内容作为简历事实呈现。
+
+命令界面将 `--company` 和 `--role` 保持为可选参数，使完整 JD 或 `master_resume` 可以在没有源目标引用时驱动生成。缺少完整 JD 时，`targeted_application` 和 `public_portfolio` 要求目标身份信息足够充分；Tier D 请求会失败，并返回机器可读的 `selection_required` 选项。只有 `master_resume` 接受 Tier D，而且不得呈现针对特定岗位的匹配结论。
 
 ## 教程：检查已完成的运行
 
@@ -591,6 +615,39 @@ uv run china-targeted-resume render \
 ```
 
 输出目录必须保持私密，并且不能通过符号链接穿越路径边界。渲染后，应使用该版本对应的确切 `--max-pages` 值检查 PDF。
+
+## 独立 CLI：确定性 IR 边界
+
+独立 CLI 暴露 Plugin 桥接所用的、基于解析器的中间表示（intermediate representation，IR）边界。这些命令是确定性验证阶段，不能绕过源、审查、隐私、批准或来源追踪门禁：
+
+| 命令 | 强制执行的边界 |
+| --- | --- |
+| `discover-source-structure` | 从只读源根目录构建能识别代码围栏、仅含元数据的 source map。 |
+| `validate-source-map` | 重新打开源并验证源身份、哈希、区间、精确引文和策略元数据。 |
+| `validate-role-input` | 验证规范化岗位 IR，并保持岗位要求、公司调研、路线图内容、约束和候选人证据相互分离。 |
+| `validate-evidence-input` | 验证由源支持的规范化证据 IR，或执行明确请求的有界抽取式物化。 |
+| `approve-claims` | 重新验证证据，要求提供 `review_decisions`，并输出文本完全一致的确定性批准陈述集合。 |
+| `generate-from-ir` | 重新验证完整生成数据包、重新计算批准结果、检查来源追踪闭包，并且只使用已锁定陈述文本编排各版本。 |
+
+除发现命令外，每个阶段都从 `--input FILE` 或 stdin 读取一个 JSON 对象，并将 JSON 写入 `--output FILE` 或 stdout。`validate-role-input`、`validate-evidence-input` 和 `approve-claims` 要求提供 `--source`；`generate-from-ir` 要求在输入元数据中提供 `source_root` 与 `output_root`，或通过 `--source` 与 `--output-root` 提供。它的 `--output` 是阶段结果 JSON 路径，不是简历产物根目录。
+
+```bash
+uv run china-targeted-resume discover-source-structure \
+  --source "$SOURCE_ROOT" \
+  --output /path/to/private/source-map.json
+
+uv run china-targeted-resume validate-source-map \
+  --source "$SOURCE_ROOT" \
+  --input /path/to/private/source-map.json \
+  --output /path/to/private/validated-source-map.json
+
+uv run china-targeted-resume generate-from-ir \
+  --input /path/to/private/generation-bundle.json \
+  --source "$SOURCE_ROOT" \
+  --output-root "$OUTPUT_ROOT"
+```
+
+`generate-from-ir` 不能只接收 approved-claims 文档。其输入数据包还必须包含 source map、规范化证据、审查决定、已批准安全陈述选择和用户确认，以便精确复算批准结果。
 
 ## 教程：分析请求 JSON
 

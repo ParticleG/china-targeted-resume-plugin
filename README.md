@@ -1,5 +1,7 @@
 # China Targeted Resume
 
+English | [简体中文](README.zh_CN.md)
+
 `china-targeted-resume` turns a read-only Markdown career knowledge base into an evidence-grounded resume for a target company and role. It analyzes job requirements, maps source-backed personal evidence, records gaps and constraints, audits visible claims, and renders a local ATS-friendly PDF.
 
 The repository provides two separately installed and supported surfaces:
@@ -61,6 +63,8 @@ Runs are not deleted automatically. Each invocation gets a UTC timestamped direc
 - Persistent indexes contain navigation metadata and hashes, not source bodies or contact data.
 - Company research never becomes candidate experience.
 - Unverified, conflicting, private, stale, or unsupported claims are omitted or converted into confirmation questions.
+- Required-section placement does not by itself make an application constraint a hard gate; `hard_gate` must be assessed explicitly.
+- Compound technology requirements need direct evidence for enough of the named technologies. A tech-stack heading or coverage inventory does not prove practical use.
 - A generated PDF is accepted only after deterministic content and PDF checks pass.
 
 ## Installation and prerequisites
@@ -469,7 +473,7 @@ Use the returned identifiers in later commands. If multiple companies or roles m
 
 ## Tutorial: generate from a complete current JD
 
-A complete current job description produces a Tier A, `exact-current-jd` analysis. Supply exactly one of `--jd-file`, `--jd-text`, or `--jd-url`.
+A supplied, non-empty job description is treated as complete by default and produces a Tier A, `exact-current-jd` analysis. Supply one—and only one—of `--jd-file`, `--jd-text`, or `--jd-url`. `--company` and `--role` may be omitted when the JD itself is the authoritative target input, although exact source identifiers improve target naming and source joins.
 
 Using a local UTF-8 JD file:
 
@@ -516,6 +520,24 @@ uv run china-targeted-resume generate \
   --output "$OUTPUT_ROOT"
 ```
 
+## Tutorial: use an incomplete JD excerpt and independent constraints
+
+A supplied JD defaults to complete. Add `--jd-incomplete` only when the supplied text, file, or URL is an excerpt. The flag requires one JD source. With an exact company and role, the parser still extracts explicit requirements from the excerpt, but target resolution remains Tier B and coverage stays indeterminate:
+
+```bash
+uv run china-targeted-resume generate \
+  --source "$SOURCE_ROOT" \
+  --company COMPANY \
+  --role "ROLE TITLE" \
+  --jd-file /path/to/job-description-excerpt.md \
+  --jd-incomplete \
+  --application-constraints-file /path/to/application-constraints.json \
+  --mode targeted_application \
+  --output "$OUTPUT_ROOT"
+```
+
+`--application-constraints-file` must contain one private JSON array conforming to [`schemas/application-constraints.schema.json`](schemas/application-constraints.schema.json). A non-empty array replaces the constraints parsed from the JD; an empty array preserves the parsed set. Set `hard_gate` from the specific constraint semantics and supporting assessment, not merely because text appeared under a “required” heading.
+
 ## Tutorial: generate when only the role is known
 
 If no complete current JD is available, omit all JD options. The pipeline continues as Tier B when the source contains an exact role and dated company research:
@@ -532,6 +554,8 @@ uv run china-targeted-resume generate \
 ```
 
 Tier B output records source age, missing requirements, conflicts, inference emphasis, and coverage limitations in audit artifacts rather than presenting them as resume facts.
+
+The command surface keeps `--company` and `--role` optional so a complete JD or `master_resume` can drive generation without a source target reference. Without a complete JD, `targeted_application` and `public_portfolio` require sufficient target identity; a Tier D request fails with machine-readable `selection_required` choices. Only `master_resume` accepts Tier D, and it must not present role-specific fit conclusions.
 
 ## Tutorial: inspect a completed run
 
@@ -594,6 +618,39 @@ uv run china-targeted-resume render \
 ```
 
 The output directory must remain private and must not traverse a symlink. After rendering, inspect that PDF with the variant's exact `--max-pages` value.
+
+## Standalone CLI: deterministic IR boundaries
+
+The standalone CLI exposes the parser-backed intermediate-representation (IR) boundaries used by the Plugin bridge. These commands are deterministic validation stages, not shortcuts around source, review, privacy, approval, or provenance gates:
+
+| Command | Boundary enforced |
+| --- | --- |
+| `discover-source-structure` | Builds a fence-aware, metadata-only source map from a read-only source root. |
+| `validate-source-map` | Re-opens the source and verifies source identity, hashes, spans, exact quotes, and policy metadata. |
+| `validate-role-input` | Validates normalized role IR while keeping requirements, company research, roadmap content, constraints, and candidate evidence separate. |
+| `validate-evidence-input` | Validates source-backed normalized evidence IR or performs explicitly requested bounded extractive materialization. |
+| `approve-claims` | Revalidates evidence, requires `review_decisions`, and emits the exact deterministically approved claim set. |
+| `generate-from-ir` | Revalidates the complete generation bundle, recomputes approvals, checks provenance closure, and composes variants only from locked claim text. |
+
+Except for discovery, each stage reads one JSON object from `--input FILE` or stdin and writes JSON to `--output FILE` or stdout. `validate-role-input`, `validate-evidence-input`, and `approve-claims` require `--source`; `generate-from-ir` requires `source_root` and `output_root` either in its input metadata or through `--source` and `--output-root`. Its `--output` option is the stage-result JSON path, not the resume artifact root.
+
+```bash
+uv run china-targeted-resume discover-source-structure \
+  --source "$SOURCE_ROOT" \
+  --output /path/to/private/source-map.json
+
+uv run china-targeted-resume validate-source-map \
+  --source "$SOURCE_ROOT" \
+  --input /path/to/private/source-map.json \
+  --output /path/to/private/validated-source-map.json
+
+uv run china-targeted-resume generate-from-ir \
+  --input /path/to/private/generation-bundle.json \
+  --source "$SOURCE_ROOT" \
+  --output-root "$OUTPUT_ROOT"
+```
+
+`generate-from-ir` does not accept an approved-claims document alone. Its input bundle must also carry the source map, normalized evidence, review decisions, approved safe-claim selections, and user confirmations needed to reproduce the approval result exactly.
 
 ## Tutorial: analyze a request JSON
 
