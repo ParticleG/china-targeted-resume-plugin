@@ -175,7 +175,7 @@ const TOPIC_TEXT: Readonly<Record<ResumeHelpTopic, readonly string[]>> = Object.
     "",
     "Source: resume_discover_structure, resume_read_source_slice, resume_validate_source_map",
     "IR: resume_validate_role_ir, resume_validate_evidence_ir, resume_lock_approved_claims",
-    "Artifacts: resume_compose_variants, resume_render_variants, resume_inspect_variants",
+    "Artifacts: resume_compose_variants, resume_render_variants, resume_inspect_variants, resume_write_growth_roadmap",
     "",
     "Humans normally use /resume-* commands. The bundled Skill calls tools in receipt order. Tools fail explicitly; there is no silent alternate backend or task-runtime replacement.",
   ]),

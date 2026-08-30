@@ -1480,4 +1480,36 @@ export function registerResumeTools(
       });
     },
   });
+
+  pi.registerTool({
+    name: "resume_write_growth_roadmap",
+    label: "Write Validated Growth Roadmap",
+    description: "Validate a private roadmap plan against the exact roadmap-handoff bytes and write non-overwriting 0700/0600 JSON, Markdown, and validation artifacts through the bundled Python backend.",
+    parameters: z.object({
+      runId,
+      sourceRoot: z.string().min(1).describe("Read-only career source root used for output-boundary validation"),
+      handoffPath: z.string().min(1).describe("Private roadmap-handoff.json path"),
+      planPath: z.string().min(1).describe("Private growth-roadmap plan JSON path"),
+      outputRoot: z.string().min(1).describe("Private output root outside the source root"),
+      timeoutMs,
+    }).strict(),
+    approval: "exec",
+    strict: true,
+    async execute(_toolCallId, params, signal, _onUpdate, _ctx) {
+      const selectedRunId = params.runId ?? runtime.activeRunId;
+      return executeWithEnvelope("resume_write_growth_roadmap", selectedRunId, runtime, async () => {
+        return bridge.run(
+          {
+            operation: "write-growth-roadmap",
+            sourceRoot: params.sourceRoot,
+            handoffPath: params.handoffPath,
+            planPath: params.planPath,
+            outputRoot: params.outputRoot,
+            input: {},
+          },
+          kernelRunOptions(signal, params.timeoutMs),
+        );
+      });
+    },
+  });
 }

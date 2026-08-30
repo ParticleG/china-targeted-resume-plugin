@@ -39,7 +39,9 @@ Research current resources at planning time. Prefer official documentation, offi
 
 Build the candidate plan against `schemas/growth-roadmap.schema.json`. Compute `source_handoff_sha256` from the exact bytes of the private handoff file. Preserve every handoff-owned field byte-for-value at the semantic model boundary; do not paraphrase `target_capability`, change severity/state, replace evidence refs, or redirect the intended owner.
 
-Write the draft plan to one private `0600` JSON input, then invoke the sole artifact writer:
+Write the draft plan to one private `0600` JSON input. When the OMP Plugin is installed, call the registered `resume_write_growth_roadmap` typed tool with `sourceRoot`, `handoffPath`, `planPath`, and `outputRoot`. The tool routes to the bundled locked Python project through `uv run --project PLUGIN_ROOT --offline --frozen`; never assume Plugin installation provides a global `china-targeted-resume` executable.
+
+Only on the separately installed standalone CLI surface, invoke:
 
 ```bash
 china-targeted-resume write-growth-roadmap \
@@ -49,7 +51,7 @@ china-targeted-resume write-growth-roadmap \
   --output OUTPUT_ROOT
 ```
 
-The command must validate input ownership/mode/size, the exact handoff hash, one plan per handoff gap, preserved handoff fields, six ordered stages, non-empty HTTPS learning resources, prerequisite references, effort ranges, safe owning paths, and the no-evidence-elevation invariant. It then allocates a new `0700` timestamped directory and atomically writes `0600` `growth-roadmap.json`, `growth-roadmap.md`, and `growth-roadmap.validation.json`. Never write final artifacts directly or overwrite an earlier run.
+Both surfaces use the same deterministic Python writer. It validates input ownership/mode/size, the exact handoff hash, one plan per handoff gap, preserved handoff fields, six ordered stages, non-empty HTTPS learning resources, prerequisite references, effort ranges, safe owning paths, and the no-evidence-elevation invariant. It then allocates a new `0700` timestamped directory and atomically writes `0600` `growth-roadmap.json`, `growth-roadmap.md`, and `growth-roadmap.validation.json`. Never write final artifacts directly or overwrite an earlier run.
 
 ## Output contract
 

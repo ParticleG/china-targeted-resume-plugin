@@ -107,6 +107,34 @@ describe("Python kernel invocation", () => {
     ]);
   });
 
+  test("routes growth-roadmap writes through the bundled project CLI", () => {
+    expect(buildPythonKernelInvocation("/plugin", {
+      operation: "write-growth-roadmap",
+      sourceRoot: "/private/career-source",
+      handoffPath: "/private/run/roadmap-handoff.json",
+      planPath: "/private/input/draft-growth-roadmap.json",
+      outputRoot: "/private/output",
+      input: {},
+    })).toEqual([
+      "uv",
+      "run",
+      "--project",
+      "/plugin",
+      "--offline",
+      "--frozen",
+      "china-targeted-resume",
+      "write-growth-roadmap",
+      "--source",
+      "/private/career-source",
+      "--handoff",
+      "/private/run/roadmap-handoff.json",
+      "--plan",
+      "/private/input/draft-growth-roadmap.json",
+      "--output",
+      "/private/output",
+    ]);
+  });
+
   test("keeps private JSON out of argv and drains a strict JSON result", async () => {
     const tempRoot = await privateTempRoot();
     const captured: CapturedSpawn = {};

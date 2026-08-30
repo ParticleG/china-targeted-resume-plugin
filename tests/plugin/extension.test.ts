@@ -10,7 +10,12 @@ import extension, {
   registerChinaTargetedResumeExtension,
 } from "../../src/plugin/extension.ts";
 import { RESUME_COMMAND_NAMES } from "../../src/plugin/commands/index.ts";
-import { RESUME_TOOL_NAMES } from "../../src/plugin/tools/index.ts";
+import {
+  RESUME_TOOL_NAMES,
+  registerResumeTools,
+  type PythonKernelBridge,
+} from "../../src/plugin/tools/index.ts";
+import { ResumePluginRuntime } from "../../src/plugin/runtime.ts";
 
 interface FakeSchema {
   min(value: number): FakeSchema;
@@ -108,16 +113,75 @@ function commandContext(notifications: string[]): ExtensionCommandContext {
 }
 
 describe("OMP Extension registration", () => {
-  test("default import registers seven commands and nine tools without launching OMP", () => {
+  test("default import registers seven commands and ten tools without launching OMP", () => {
     const captured = capturePi();
     extension(captured.api);
 
     expect([...captured.commands.keys()]).toEqual([...RESUME_COMMAND_NAMES]);
     expect(captured.tools.map((tool) => tool.name)).toEqual([...RESUME_TOOL_NAMES]);
-    expect(captured.tools).toHaveLength(9);
+    expect(captured.tools).toHaveLength(10);
     expect(captured.commands.size).toBe(7);
     expect(captured.prompts).toEqual([]);
     expect(captured.tools.every((tool) => tool.execute.length === 5)).toBe(true);
+  });
+
+  test("growth-roadmap tool routes exact paths to the bundled Python bridge", async () => {
+    const captured = capturePi();
+    const runtime = new ResumePluginRuntime("growth-route");
+    const requests: unknown[] = [];
+    const bridge = {
+      async run(request: unknown) {
+        requests.push(request);
+        return {
+          operation: "write-growth-roadmap",
+          run_dir: "/private/output/growth-run",
+          artifacts: [],
+          summary: { success: true },
+        };
+      },
+    } as unknown as PythonKernelBridge;
+    registerResumeTools(captured.api, runtime, { bridge });
+    const tool = captured.tools.find(
+      (candidate) => candidate.name === "resume_write_growth_roadmap",
+    )!;
+
+    const rawResult = await tool.execute(
+      "call-growth-roadmap",
+      {
+        runId: "growth-route",
+        sourceRoot: "/private/source",
+        handoffPath: "/private/run/roadmap-handoff.json",
+        planPath: "/private/input/draft-growth-roadmap.json",
+        outputRoot: "/private/output",
+      },
+      undefined,
+      undefined,
+      {},
+    );
+
+    expect(requests).toEqual([{
+      operation: "write-growth-roadmap",
+      sourceRoot: "/private/source",
+      handoffPath: "/private/run/roadmap-handoff.json",
+      planPath: "/private/input/draft-growth-roadmap.json",
+      outputRoot: "/private/output",
+      input: {},
+    }]);
+    if (
+      rawResult === null
+      || typeof rawResult !== "object"
+      || !("details" in rawResult)
+      || rawResult.details === null
+      || typeof rawResult.details !== "object"
+      || !("ok" in rawResult.details)
+      || typeof rawResult.details.ok !== "boolean"
+    ) {
+      throw new Error("Growth-roadmap tool result did not contain a typed envelope");
+    }
+    expect(rawResult.details.ok).toBe(true);
+    expect(runtime.status().completedTools).toContain(
+      "resume_write_growth_roadmap",
+    );
   });
 
   test("registration returns isolated metadata-only runtime state", () => {

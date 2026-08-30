@@ -22,6 +22,7 @@ export type KernelOperation =
   | "validate-role-input"
   | "validate-evidence-input"
   | "generate-from-ir"
+  | "write-growth-roadmap"
   | "render"
   | "inspect-pdf";
 
@@ -49,6 +50,13 @@ export type KernelRequest =
       readonly sourceRoot?: string;
       readonly outputRoot?: string;
       readonly includeExtendedProfile?: boolean;
+    })
+  | (KernelRequestBase & {
+      readonly operation: "write-growth-roadmap";
+      readonly sourceRoot: string;
+      readonly handoffPath: string;
+      readonly planPath: string;
+      readonly outputRoot: string;
     })
   | (KernelRequestBase & {
       readonly operation: "render";
@@ -182,6 +190,12 @@ export function buildPythonKernelInvocation(pluginRoot: string, request: KernelR
       if (request.sourceRoot !== undefined) command.push("--source", assertSafePath(request.sourceRoot, "Source root"));
       if (request.outputRoot !== undefined) command.push("--output-root", assertSafePath(request.outputRoot, "Output root"));
       if (request.includeExtendedProfile === true) command.push("--include-extended-profile");
+      break;
+    case "write-growth-roadmap":
+      command.push("--source", assertSafePath(request.sourceRoot, "Source root"));
+      command.push("--handoff", assertSafePath(request.handoffPath, "Roadmap handoff"));
+      command.push("--plan", assertSafePath(request.planPath, "Growth roadmap plan"));
+      command.push("--output", assertSafePath(request.outputRoot, "Output root"));
       break;
     case "render":
       command.push("--document", assertSafePath(request.documentPath, "Resume document"));

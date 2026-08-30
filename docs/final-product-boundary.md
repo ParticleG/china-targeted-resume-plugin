@@ -48,6 +48,7 @@ OMP `17.3.7` is the compatibility floor and the source-checked/local-smoke basel
 | `resume_compose_variants` | Python behind a TypeScript approval-lock guard | Recomputes and verifies the run-bound TypeScript lock before the Python backend composes recruiter, technical, and optional extended variants, writes the manifest, and runs content audit. A missing/mismatched lock or unavailable Python backend stops the tool. |
 | `resume_render_variants` | Python behind a TypeScript manifest/path guard | Python/Jinja composition output and Playwright Chromium produce HTML, PDFs, and previews for every manifest-listed variant. Missing renderer prerequisites stop the tool. |
 | `resume_inspect_variants` | Python/PyMuPDF behind a TypeScript manifest/path guard | Inspects every manifest-listed PDF; a subset cannot be silently accepted. Missing PyMuPDF or a failed check stops acceptance. |
+| `resume_write_growth_roadmap` | Python behind a TypeScript typed path/argument guard | Routes the independent growth-roadmap Skill to the bundled locked Python project, validates the exact private handoff-bound plan, and atomically writes non-overwriting `0700`/`0600` roadmap artifacts. Plugin installation never assumes a global CLI. |
 
 The seven slash commands remain TypeScript OMP entry points:
 

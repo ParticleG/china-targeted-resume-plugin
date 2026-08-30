@@ -49,6 +49,7 @@ describe("documented Phase 3 product boundary", () => {
       "resume_compose_variants",
       "resume_render_variants",
       "resume_inspect_variants",
+      "resume_write_growth_roadmap",
     ]) {
       expect(rows.get(tool)).toContain("Python");
     }

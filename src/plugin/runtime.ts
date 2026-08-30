@@ -18,6 +18,7 @@ export const RESUME_TOOL_NAMES = [
   "resume_compose_variants",
   "resume_render_variants",
   "resume_inspect_variants",
+  "resume_write_growth_roadmap",
 ] as const;
 
 export type ResumeToolName = (typeof RESUME_TOOL_NAMES)[number];

@@ -343,7 +343,7 @@ Follow the receipts, not filenames or model prose:
 
 The bundled Skill and its seven agents use OMP's built-in `task` orchestration for independent analysis and reviews. Slash commands only seed that workflow and show state; they cannot bypass deterministic source-policy, IR, evidence, approval, composition, rendering, or inspection tools.
 
-### Nine deterministic tools by user-facing stage
+### Ten deterministic tools by user-facing stage
 
 | Stage | Tool | What it does and what it refuses |
 | --- | --- | --- |
@@ -356,6 +356,7 @@ The bundled Skill and its seven agents use OMP's built-in `task` orchestration f
 | Compose | `resume_compose_variants` | Verifies same-run receipts and confirmation state, then invokes private Python composition; it cannot receive caller-supplied evidence/review/approval bodies |
 | Render | `resume_render_variants` | Re-renders every manifest-listed document to its manifest-listed PDF; traversal-unsafe or missing artifacts fail closed |
 | Inspect/audit | `resume_inspect_variants` | Inspects every manifest-listed PDF with its page contract and real extracted-text checks; a subset cannot be supplied |
+| Growth roadmap | `resume_write_growth_roadmap` | Routes the independent roadmap Skill through the bundled locked Python project; validates the handoff-bound plan and writes private non-overwriting artifacts without requiring a global CLI |
 
 All tools return a typed success/error envelope and use one configured backend. There is no silent TypeScript/Python fallback. Python-backed tools require the project-local bridge prerequisites.
 
@@ -767,7 +768,7 @@ uv run china-targeted-resume export-roadmap-handoff \
 
 This command exports confirmed gaps. It does not create a learning plan and does not change current evidence states. Give the resulting file to the separately installed `china-resume-growth-roadmap` Skill only after an explicit planning request.
 
-The independent Skill prepares a private plan conforming to [`schemas/growth-roadmap.schema.json`](schemas/growth-roadmap.schema.json). Final artifacts must be produced through the deterministic writer:
+The independent Skill prepares a private plan conforming to [`schemas/growth-roadmap.schema.json`](schemas/growth-roadmap.schema.json). In Plugin mode it calls `resume_write_growth_roadmap`, which routes through the bundled locked Python project and does not require a global CLI. On the separately installed standalone surface, use:
 
 ```bash
 uv run china-targeted-resume write-growth-roadmap \
