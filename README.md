@@ -485,6 +485,8 @@ uv run china-targeted-resume guided-generate \
 
 Pass `--company` or `--role` to skip either prompt. The default `adaptive` strategy selects the concrete single-column template per variant and records it in `resume-variants.json`.
 
+For `zh-CN`, visible structural labels are Chinese and content validation fails closed when a narrative field remains English-only. Conventional organization names, product names, and technology terms may stay in English inside concise Chinese prose.
+
 ## Tutorial: generate from a complete current JD
 
 A supplied, non-empty job description is treated as complete by default and produces a Tier A, `exact-current-jd` analysis. Supply one—and only one—of `--jd-file`, `--jd-text`, or `--jd-url`. `--company` and `--role` may be omitted when the JD itself is the authoritative target input, although exact source identifiers improve target naming and source joins.
@@ -552,11 +554,17 @@ uv run china-targeted-resume generate \
 
 `--application-constraints-file` must contain one private JSON array conforming to [`schemas/application-constraints.schema.json`](schemas/application-constraints.schema.json). A non-empty array replaces the constraints parsed from the JD; an empty array preserves the parsed set. Use it only for independently assessed logistics and eligibility such as location, work authorization, language, travel, schedule, deadline, or mandatory checks. Set `hard_gate` from the specific constraint semantics and supporting assessment, not merely because text appeared under a “required” heading. Experience, seniority, capability, and skill thresholds are rejected here.
 
-Experience duration and skill thresholds are requirements, not application constraints. Duration diagnostics use a two-run, non-overwriting flow so every input binds to IDs produced by the deterministic requirement and evidence mapping stages:
+Experience duration and skill thresholds are requirements, not application constraints. The default mapping handles an explicit atomic duration threshold automatically when exactly one current owning fact has the same normalized scope:
 
-1. Run `generate` or `guided-generate` once without a duration diagnostics file.
-2. Read the resulting `requirements.json`, `evidence-map.json`, and private `experience-duration-facts.json`. The explicit requirement must contain a parser-owned duration from its quote; the candidate fact index lists only evidence IDs whose current owning path/hash/span yielded one extractive atomic duration plus checked date.
-3. Create a private `duration-diagnostics.json` using the exact requirement ID and an evidence ID from that candidate fact index:
+- a fact meeting the minimum keeps the evidence mapping's strongest supported state;
+- a shortfall of at most 25% becomes `可迁移经验`, records a structured near-match diagnostic, and supports `apply_with_risks`;
+- a larger shortfall becomes `明确缺口`; and
+- a missing or ambiguous current fact becomes `待确认`.
+
+Use a private manual binding only to disambiguate multiple matching owning facts:
+
+1. Read the baseline run's `requirements.json`, `evidence-map.json`, and private `experience-duration-facts.json`.
+2. Create `duration-diagnostics.json` with the exact requirement ID and selected evidence ID:
 
 ```json
 [
@@ -575,7 +583,7 @@ Experience duration and skill thresholds are requirements, not application const
 ]
 ```
 
-4. Rerun the same generation command into the same output root, adding:
+3. Rerun the same generation command into the same output root, adding:
 
 ```bash
 --experience-duration-diagnostics-file /path/to/duration-diagnostics.json

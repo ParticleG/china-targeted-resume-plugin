@@ -46,6 +46,8 @@ Target by selecting and ordering facts, not rewriting history. Prefer direct evi
 
 The variants are independently composed for distinct readers and depth. Keep every A4 template semantic and single-column. The `adaptive` request strategy resolves to `ats-simple` for the recruiter one-page variant and `human-readable` for the technical two-page and optional extended three-page variants; each `ResumeDocument` and manifest entry records only the resolved concrete template. Each variant's page budget affects content selection before typography, and required minimum body font and margins remain enforced.
 
+Visible structural labels follow the document locale. A `zh-CN` document fails content validation when a narrative headline, summary, experience/project context, bullet, or detail remains English-only prose; organization, product, and conventional technology names are not independently translated or rejected.
+
 ## Completion
 
 A run is complete only after every manifest-listed variant passes its own provenance coverage, deterministic content validation, render, and PDF page-contract inspection. A source-sparse variant may pass below its target only when it is explicitly marked `underfilled`; never pad it with unsupported content. Report target basis, limitations, manifest and output paths, omitted/pending claims, blockers, and per-variant validation results. A generated file alone is not proof of acceptance.

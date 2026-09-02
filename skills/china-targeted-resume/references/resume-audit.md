@@ -4,7 +4,7 @@ Run deterministic content validation before rendering and deterministic PDF insp
 
 ## Content audits
 
-**ATS:** one-column reading order; standard section names; natural, truthful keyword coverage; parseable dates, organizations, and titles; no essential text only in icons/images; every listed skill supported.
+**ATS:** one-column reading order; locale-consistent standard section names and narrative prose; natural, truthful keyword coverage; parseable dates, organizations, and titles; no essential text only in icons/images; every listed skill supported. For `zh-CN`, reject English-only narrative fields while allowing conventional organization, product, and technology names inside Chinese prose.
 
 **HR:** target direction visible quickly; recent relevant experience first; key outcomes visible; career changes, vendor/client arrangements, gaps, and role changes not misleadingly packaged; appropriate density.
 

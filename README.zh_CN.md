@@ -468,6 +468,21 @@ uv run china-targeted-resume list-roles \
 
 在后续命令中使用返回的标识符。如果有多个公司或岗位匹配，请明确选择一个，而不是猜测。
 
+## 教程：无 OMP 引导式生成
+
+没有 OMP 时，`guided-generate` 会自动发现公司和岗位，并通过独立终端设备完成交互选择；最终成功结果仍以机器可读 JSON 输出到 stdout。`--source` 可以直接指向职业资料库根目录，也可以指向常规的 `company-research` 子目录：
+
+```bash
+uv run china-targeted-resume guided-generate \
+  --source "$SOURCE_ROOT/company-research" \
+  --jd-file /path/to/job-description.md \
+  --output "$OUTPUT_ROOT"
+```
+
+传入 `--company` 或 `--role` 可以跳过对应选择。非交互环境必须同时提供确切的公司和岗位。默认 `adaptive` 策略为一页招聘版选择 `ats-simple`，为两页技术版和可选三页扩展版选择 `human-readable`；所有版本保持单栏语义顺序，具体模板记录在 `resume-variants.json`。
+
+当 `--language zh-CN` 时，标题等可见结构标签使用中文；如果摘要、项目语境或经历要点仍是纯英文叙述，内容审计会失败。组织、产品和常规技术名称可以保留英文，但应放在简洁中文叙述中。
+
 ## 教程：根据完整且当前有效的 JD 生成简历
 
 提供的非空职位描述默认视为完整，并产生 Tier A、`exact-current-jd` 分析。必须且只能提供 `--jd-file`、`--jd-text` 或 `--jd-url` 中的一个参数。当 JD 本身就是权威目标输入时，可以省略 `--company` 和 `--role`；但提供确切的源标识符有助于改进目标命名和源关联。
@@ -482,7 +497,7 @@ uv run china-targeted-resume generate \
   --jd-file /path/to/job-description.md \
   --mode targeted_application \
   --language zh-CN \
-  --template ats-simple \
+  --template adaptive \
   --output "$OUTPUT_ROOT"
 ```
 
@@ -496,7 +511,7 @@ uv run china-targeted-resume generate \
   --jd-url https://jobs.example.invalid/ROLE \
   --mode targeted_application \
   --language zh-CN \
-  --template ats-simple \
+  --template adaptive \
   --output "$OUTPUT_ROOT"
 ```
 
@@ -512,7 +527,7 @@ uv run china-targeted-resume generate \
   --jd-file /path/to/job-description.md \
   --mode targeted_application \
   --language zh-CN \
-  --template ats-simple \
+  --template adaptive \
   --include-extended-profile \
   --output "$OUTPUT_ROOT"
 ```
@@ -534,6 +549,15 @@ uv run china-targeted-resume generate \
 ```
 
 `--application-constraints-file` 必须包含一个符合 [`schemas/application-constraints.schema.json`](schemas/application-constraints.schema.json) 的私有 JSON 数组。非空数组会替换从 JD 解析出的约束；空数组会保留解析结果。应根据具体约束语义和支持性评估设置 `hard_gate`，不能仅因文本位于“必需”标题下就将其设为 `true`。
+
+工作年限、资历、能力和技能门槛属于岗位要求，不能作为独立申请约束写入该文件。对于一个由 JD 原文解析出的原子年限要求，默认映射会自动比较同一规范化范围内唯一、当前且可追溯的候选人年限事实：
+
+- 达到最低年限时保留证据映射原有的最强支持状态；
+- 差距不超过 25% 时标记为 `可迁移经验`，写入结构化 near-match 诊断，并允许给出 `apply_with_risks`；
+- 差距超过 25% 时标记为 `明确缺口`；
+- 缺少当前事实或出现多个同范围事实时标记为 `待确认`。
+
+只有多个事实需要人工消歧时，才读取首轮运行的 `requirements.json`、`evidence-map.json` 和私有 `experience-duration-facts.json`，用确切的 requirement ID 与 evidence ID 创建绑定文件，并在新时间戳运行中增加 `--experience-duration-diagnostics-file`。重新运行会再次核验拥有者路径、哈希、span、年限、范围和 `checked_at`；不能通过手工绑定修改 JD 门槛或自报年限。
 
 ## 教程：仅知道岗位时生成简历
 
@@ -671,7 +695,7 @@ uv run china-targeted-resume generate-from-ir \
   "output_mode": "targeted_application",
   "language": "zh-CN",
   "include_extended_profile": false,
-  "template": "ats-simple",
+  "template": "adaptive",
   "persist_role_research": false,
   "refresh_external_sources": false,
   "export_roadmap_handoff": false,

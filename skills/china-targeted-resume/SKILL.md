@@ -174,7 +174,7 @@ china-targeted-resume guided-generate \
 
 The `adaptive` strategy keeps every document semantic and single-column: the recruiter one-page variant uses `ats-simple`, while the technical two-page and optional extended three-page variants use `human-readable`. Each manifest entry records the concrete template.
 
-Duration diagnostics require a baseline run first. Read its deterministic `requirements.json`, `evidence-map.json`, and private `experience-duration-facts.json`, then create a binding using the exact explicit requirement ID and an evidence ID from that fact index. Before binding, the rerun reopens each owning source span and rebuilds the record; candidate scope/years/check time must again match, while the required scope/minimum/maximum must match the requirement quote/span. Any mismatch fails before recommendation.
+When an explicit atomic duration requirement has exactly one current owning fact with the same normalized scope, evidence mapping compares them automatically: meeting the minimum preserves the strongest supported state, a shortfall of at most 25% becomes `可迁移经验` with a structured near-match diagnostic, a larger shortfall becomes `明确缺口`, and missing or multiple facts become `待确认`. Use a private `--experience-duration-diagnostics-file` only to disambiguate multiple matching facts. Build it from the baseline run's deterministic `requirements.json`, `evidence-map.json`, and private `experience-duration-facts.json`; the rerun reopens the selected owning span and requires candidate scope/years/check time plus required scope/minimum/maximum to match exactly.
 
 Analyze and refresh:
 

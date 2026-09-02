@@ -22,6 +22,8 @@ An unsatisfied hard constraint becomes an explicit application blocker. An unkno
 
 An experience-duration threshold remains an explicit requirement, not an application constraint. The requirement side must be parsed from one atomic numeric verbatim quote/span. The candidate side must be parsed from a current selected `EvidenceRecord` with owning source path/hash/span and an extractive atomic duration fact containing its checked date. The binding's candidate scope/years/check time must match every referenced record, and its required scope/minimum/maximum must match the requirement. Reject arbitrary IDs, self-reported numbers, records without duration facts, altered thresholds, compound/free-text scope, inferred requirements, missing audit data, and mismatched evidence. Only a verified shortfall of at most 25% supports `apply_with_risks`; logistics/eligibility hard constraints remain independently blocking.
 
+The default evidence mapping performs this comparison automatically only when one current owning duration fact matches the normalized requirement scope. Multiple matches stay `待确认`; a private explicit binding may select one of those already validated facts but may not change either side's parsed values.
+
 ## Recommendation
 
 Use `apply_now`, `apply_with_risks`, `deprioritize`, or `pending_information`, supported by target-source completeness, hard-constraint readiness, explicit coverage when valid, evidence strength, Critical/Major gaps, pending information, and concise rationale.
