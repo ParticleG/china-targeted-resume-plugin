@@ -332,7 +332,7 @@ class ExperienceDurationRequirement(CanonicalModel):
         return self
 
 
-class ExperienceDurationNearMatchDiagnostic(CanonicalModel):
+class ExperienceDurationBindingDiagnostic(CanonicalModel):
     candidate_scope: str = Field(min_length=1)
     required_scope: str = Field(min_length=1)
     unit: Literal["years"] = "years"
@@ -345,7 +345,7 @@ class ExperienceDurationNearMatchDiagnostic(CanonicalModel):
     @model_validator(mode="after")
     def comparison_is_atomic_and_ordered(
         self,
-    ) -> ExperienceDurationNearMatchDiagnostic:
+    ) -> ExperienceDurationBindingDiagnostic:
         if not experience_scope_is_atomic(
             self.candidate_scope
         ) or not experience_scope_is_atomic(self.required_scope):
@@ -358,10 +358,6 @@ class ExperienceDurationNearMatchDiagnostic(CanonicalModel):
             raise ValueError(
                 "candidate_scope and required_scope must identify the same comparison object"
             )
-        if self.candidate_years >= self.required_min_years:
-            raise ValueError(
-                "near-match diagnostic requires candidate_years below required_min_years"
-            )
         if (
             self.required_max_years is not None
             and self.required_max_years < self.required_min_years
@@ -372,9 +368,23 @@ class ExperienceDurationNearMatchDiagnostic(CanonicalModel):
         return self
 
 
+class ExperienceDurationNearMatchDiagnostic(
+    ExperienceDurationBindingDiagnostic
+):
+    @model_validator(mode="after")
+    def candidate_is_below_requirement(
+        self,
+    ) -> ExperienceDurationNearMatchDiagnostic:
+        if self.candidate_years >= self.required_min_years:
+            raise ValueError(
+                "near-match diagnostic requires candidate_years below required_min_years"
+            )
+        return self
+
+
 class ExperienceDurationDiagnosticBinding(CanonicalModel):
     requirement_id: StableId
-    diagnostic: ExperienceDurationNearMatchDiagnostic
+    diagnostic: ExperienceDurationBindingDiagnostic
 
 
 class RoleRequest(CanonicalModel):

@@ -17,6 +17,7 @@ from china_targeted_resume.models import (
     EvidenceMapping,
     EvidenceRecord,
     ExperienceDurationDiagnosticBinding,
+    ExperienceDurationNearMatchDiagnostic,
     FactState,
     Freshness,
     Requirement,
@@ -29,6 +30,16 @@ from china_targeted_resume.policy import apply_evidence_policy
 
 
 NEAR_MATCH_EXPERIENCE_SHORTFALL = 0.25
+_DURATION_MISSING_EVIDENCE = (
+    "Add one current checked atomic duration fact for the explicit experience threshold."
+)
+_DURATION_AMBIGUOUS_EVIDENCE = (
+    "Select one current checked atomic duration fact for the explicit experience "
+    "threshold; multiple matching facts were found."
+)
+_DURATION_SHORTFALL_RISK_PREFIX = (
+    "Disclose the checked experience-duration shortfall: "
+)
 _APPROXIMATE = re.compile(r"(?:约|大约|近|超过|不少于|approximately|about|around|roughly|~|≈)", re.I)
 _RANGE = re.compile(r"(?:\b\d+(?:\.\d+)?\s*[-–—~至到]\s*\d+(?:\.\d+)?\b|数十|数百|several|between)", re.I)
 _STAGE = re.compile(r"(?:阶段|试点|原型|PoC|pilot|prototype|phase|截至|at the time)", re.I)
@@ -214,7 +225,11 @@ def assess_experience_duration_near_match(
     }
     for evidence_id in diagnostic.evidence_refs:
         record = records_by_id.get(evidence_id)
-        if record is None or record.experience_duration_fact is None:
+        if (
+            record is None
+            or record.experience_duration_fact is None
+            or record.freshness.stale
+        ):
             return None
         fact = record.experience_duration_fact
         if (
@@ -327,6 +342,10 @@ def bind_experience_duration_diagnostics(
                 raise ValueError(
                     f"experience duration diagnostic references unknown evidence record: {evidence_id}"
                 )
+            if record.freshness.stale:
+                raise ValueError(
+                    f"experience duration diagnostic evidence is stale: {evidence_id}"
+                )
             fact = record.experience_duration_fact
             if fact is None:
                 raise ValueError(
@@ -342,10 +361,87 @@ def bind_experience_duration_diagnostics(
                 raise ValueError(
                     f"experience duration diagnostic candidate value does not match owning evidence: {evidence_id}"
                 )
+        shortfall = (
+            threshold.required_min_years - diagnostic.candidate_years
+        ) / threshold.required_min_years
+        if shortfall > NEAR_MATCH_EXPERIENCE_SHORTFALL:
+            raise ValueError(
+                "experience duration diagnostic exceeds the supported near-match shortfall"
+            )
+        competing_duration_ids = {
+            record.evidence_id
+            for record in canonical_records.values()
+            if record.experience_duration_fact is not None
+            and normalize_experience_scope(
+                record.experience_duration_fact.scope
+            )
+            == normalize_experience_scope(threshold.scope)
+        }
+        retained_ids = [
+            evidence_id
+            for evidence_id in mapping.evidence_ids
+            if evidence_id not in competing_duration_ids
+        ]
         payload = mapping.model_dump(mode="python")
-        payload["experience_duration_diagnostic"] = diagnostic
-        mapping_by_id[binding.requirement_id] = (
-            EvidenceMapping.model_validate(payload)
+        bound_ids = list(
+            dict.fromkeys([*retained_ids, *diagnostic.evidence_refs])
+        )
+        payload["evidence_ids"] = bound_ids
+        payload["missing_evidence"] = [
+            item
+            for item in mapping.missing_evidence
+            if item
+            not in {
+                _DURATION_MISSING_EVIDENCE,
+                _DURATION_AMBIGUOUS_EVIDENCE,
+            }
+        ]
+        unrelated_risks = [
+            risk
+            for risk in mapping.interview_risks
+            if not risk.startswith(_DURATION_SHORTFALL_RISK_PREFIX)
+        ]
+        if shortfall <= 0:
+            bound_states = [
+                _state(canonical_records[evidence_id].match_state)
+                for evidence_id in bound_ids
+                if evidence_id in canonical_records
+                and not canonical_records[evidence_id].freshness.stale
+            ]
+            payload["match_state"] = min(
+                bound_states,
+                key=_STATE_ORDER.__getitem__,
+            )
+            payload["selection_reason"] = (
+                "Bound one current owning duration fact to the explicit "
+                "requirement; the checked duration "
+                f"({diagnostic.candidate_years:g} years) meets the "
+                f"{threshold.required_min_years:g}-year threshold."
+            )
+            payload["interview_risks"] = unrelated_risks
+            payload["experience_duration_diagnostic"] = None
+        else:
+            payload["match_state"] = RoleMatchState.TRANSFERABLE_EXPERIENCE
+            payload["selection_reason"] = (
+                "Bound one current owning duration fact to the explicit requirement; "
+                f"the verified shortfall is {shortfall:.1%}."
+            )
+            payload["interview_risks"] = [
+                *unrelated_risks,
+                (
+                    _DURATION_SHORTFALL_RISK_PREFIX
+                    + f"{diagnostic.candidate_years:g} of "
+                    f"{threshold.required_min_years:g} required years "
+                    f"({shortfall:.1%})."
+                ),
+            ]
+            payload["experience_duration_diagnostic"] = (
+                ExperienceDurationNearMatchDiagnostic.model_validate(
+                    diagnostic.model_dump(mode="python")
+                )
+            )
+        mapping_by_id[binding.requirement_id] = EvidenceMapping.model_validate(
+            payload
         )
     return [
         mapping_by_id[mapping.requirement_id]
@@ -548,19 +644,18 @@ def _mapping_for(requirement: Any, records: Sequence[EvidenceRecord]) -> Evidenc
             risks.append("Validate contribution scope and all metric qualifiers in interview.")
     if any(record.freshness.dynamic for record in selected):
         risks.append("Dynamic evidence requires current verification.")
-    usable_ids = [record.evidence_id for record in selected if not record.freshness.stale]
+    usable_ids = [
+        record.evidence_id for record in selected if not record.freshness.stale
+    ]
+    duration_diagnostic: ExperienceDurationNearMatchDiagnostic | None = None
     duration_threshold = _get(requirement, "experience_duration")
     if duration_threshold is not None:
-        duration_scope = str(
-            _get(duration_threshold, "scope", "")
-        )
+        duration_scope = str(_get(duration_threshold, "scope", ""))
         duration_records = [
             record
             for record in linked
             if record.experience_duration_fact is not None
-            and normalize_experience_scope(
-                record.experience_duration_fact.scope
-            )
+            and normalize_experience_scope(record.experience_duration_fact.scope)
             == normalize_experience_scope(duration_scope)
             and _state(record.match_state)
             in {
@@ -569,28 +664,80 @@ def _mapping_for(requirement: Any, records: Sequence[EvidenceRecord]) -> Evidenc
             }
             and not record.freshness.stale
         ]
-        if duration_records:
+        if len(duration_records) == 1:
+            duration_record = duration_records[0]
+            fact = duration_record.experience_duration_fact
+            assert fact is not None
             usable_ids = list(
-                dict.fromkeys(
-                    [
-                        *usable_ids,
-                        *(
-                            record.evidence_id
-                            for record in duration_records
-                        ),
-                    ]
+                dict.fromkeys([*usable_ids, duration_record.evidence_id])
+            )
+            required_min_years = float(
+                _get(duration_threshold, "required_min_years", 0.0)
+            )
+            if fact.years >= required_min_years:
+                selection_reason += (
+                    " The current checked duration fact meets the explicit "
+                    f"{required_min_years:g}-year threshold."
                 )
+            else:
+                shortfall = (
+                    required_min_years - fact.years
+                ) / required_min_years
+                if shortfall <= NEAR_MATCH_EXPERIENCE_SHORTFALL:
+                    best = RoleMatchState.TRANSFERABLE_EXPERIENCE
+                    duration_diagnostic = ExperienceDurationNearMatchDiagnostic(
+                        candidate_scope=fact.scope,
+                        required_scope=duration_scope,
+                        unit=fact.unit,
+                        candidate_years=fact.years,
+                        required_min_years=required_min_years,
+                        required_max_years=_get(
+                            duration_threshold,
+                            "required_max_years",
+                        ),
+                        evidence_refs=[duration_record.evidence_id],
+                        checked_at=fact.checked_at,
+                    )
+                    selection_reason = (
+                        "Mapped as 可迁移经验 because one current owning "
+                        "duration fact is within the supported near-match "
+                        f"shortfall ({shortfall:.1%})."
+                    )
+                    risks.append(
+                        "Disclose the checked experience-duration shortfall: "
+                        f"{fact.years:g} of {required_min_years:g} required "
+                        f"years ({shortfall:.1%})."
+                    )
+                else:
+                    best = RoleMatchState.CLEAR_GAP
+                    selection_reason = (
+                        "Mapped as 明确缺口 because the current checked "
+                        "duration fact is outside the supported 25% "
+                        f"near-match boundary ({shortfall:.1%})."
+                    )
+                    missing_evidence.append(
+                        "The explicit experience threshold is not met: "
+                        f"{fact.years:g} of {required_min_years:g} required "
+                        f"years ({shortfall:.1%} shortfall)."
+                    )
+        elif duration_records:
+            best = RoleMatchState.PENDING_CONFIRMATION
+            selection_reason = (
+                "Duration fit is pending because multiple current owning facts "
+                "match the explicit experience scope."
             )
-            risks.append(
-                "Validate the checked atomic experience-duration fact against the explicit threshold."
-            )
+            missing_evidence.append(_DURATION_AMBIGUOUS_EVIDENCE)
         else:
-            missing_evidence.append(
-                "Add one checked atomic duration fact for the explicit experience threshold."
+            best = RoleMatchState.PENDING_CONFIRMATION
+            selection_reason = (
+                "Duration fit is pending because no current owning atomic fact "
+                "matches the explicit experience scope."
             )
+            missing_evidence.append(_DURATION_MISSING_EVIDENCE)
     if not usable_ids:
         best = RoleMatchState.PENDING_CONFIRMATION
-        missing_evidence = ["Current eligible evidence is required."]
+        if not missing_evidence:
+            missing_evidence.append("Current eligible evidence is required.")
     return EvidenceMapping(
         requirement_id=requirement_id,
         match_state=best,
@@ -599,6 +746,7 @@ def _mapping_for(requirement: Any, records: Sequence[EvidenceRecord]) -> Evidenc
         resume_priority=float(_get(requirement, "confidence", 0.0) or 0.0),
         interview_risks=risks,
         missing_evidence=missing_evidence,
+        experience_duration_diagnostic=duration_diagnostic,
     )
 
 

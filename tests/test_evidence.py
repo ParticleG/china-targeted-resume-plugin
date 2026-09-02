@@ -321,11 +321,269 @@ def test_duration_requirement_mapping_keeps_owning_duration_evidence(
         mode="targeted_application",
     )
 
+    assert mapping.match_state is RoleMatchState.TRANSFERABLE_EXPERIENCE
     assert duration_record.evidence_id in mapping.evidence_ids
-    assert any(
-        "duration" in risk.casefold()
-        for risk in mapping.interview_risks
+    assert mapping.experience_duration_diagnostic is not None
+    assert assess_experience_duration_near_match(
+        mapping,
+        requirement,
+        [duration_record],
+    ) == (4.0, 5.0, 0.2)
+    assert any("20.0%" in risk for risk in mapping.interview_risks)
+
+def test_duration_requirement_keeps_direct_state_when_threshold_is_met(
+    candidate_factory,
+) -> None:
+    [requirement] = parse_requirements(
+        "# Required\n"
+        "- At least 5 years of professional Python development experience.\n",
+        source_id="fixture-jd",
     )
+    duration_candidate = candidate_factory(
+        candidate_id="candidate-duration-met",
+        requirement_ids=[requirement.requirement_id],
+        proposed_claim=(
+            "Maintained 5 years of professional Python development "
+            "experience; checked 2026-08-30."
+        ),
+        match_state=RoleMatchState.DIRECT_EVIDENCE,
+    )
+
+    [mapping] = build_evidence_map(
+        [requirement],
+        [duration_candidate],
+        mode="targeted_application",
+    )
+
+    assert mapping.match_state is RoleMatchState.DIRECT_EVIDENCE
+    assert mapping.experience_duration_diagnostic is None
+    assert "meets the explicit 5-year threshold" in mapping.selection_reason
+
+
+def test_duration_requirement_over_25_percent_shortfall_is_clear_gap(
+    candidate_factory,
+) -> None:
+    [requirement] = parse_requirements(
+        "# Required\n"
+        "- At least 5 years of professional Python development experience.\n",
+        source_id="fixture-jd",
+    )
+    duration_candidate = candidate_factory(
+        candidate_id="candidate-duration-gap",
+        requirement_ids=[requirement.requirement_id],
+        proposed_claim=(
+            "Maintained 3 years of professional Python development "
+            "experience; checked 2026-08-30."
+        ),
+        match_state=RoleMatchState.TRANSFERABLE_EXPERIENCE,
+    )
+
+    [mapping] = build_evidence_map(
+        [requirement],
+        [duration_candidate],
+        mode="targeted_application",
+    )
+
+    assert mapping.match_state is RoleMatchState.CLEAR_GAP
+    assert mapping.experience_duration_diagnostic is None
+    assert any("40.0%" in item for item in mapping.missing_evidence)
+
+
+def test_duration_requirement_without_atomic_fact_is_pending(
+    candidate_factory,
+) -> None:
+    [requirement] = parse_requirements(
+        "# Required\n"
+        "- At least 5 years of professional Python development experience.\n",
+        source_id="fixture-jd",
+    )
+    direct_candidate = candidate_factory(
+        candidate_id="candidate-python-without-duration",
+        requirement_ids=[requirement.requirement_id],
+        proposed_claim="Implemented professional Python automation.",
+        match_state=RoleMatchState.DIRECT_EVIDENCE,
+    )
+
+    [mapping] = build_evidence_map(
+        [requirement],
+        [direct_candidate],
+        mode="targeted_application",
+    )
+
+    assert mapping.match_state is RoleMatchState.PENDING_CONFIRMATION
+    assert mapping.experience_duration_diagnostic is None
+    assert any("atomic duration fact" in item for item in mapping.missing_evidence)
+
+
+def test_manual_duration_binding_disambiguates_multiple_current_facts(
+    candidate_factory,
+) -> None:
+    [requirement] = parse_requirements(
+        "# Required\n"
+        "- At least 5 years of professional Python development experience.\n",
+        source_id="fixture-jd",
+    )
+    candidates = [
+        candidate_factory(
+            candidate_id=f"candidate-duration-ambiguous-{index}",
+            requirement_ids=[requirement.requirement_id],
+            source=SourceRef(
+                path=f"personal-data/work/python-{index}.md",
+                title=f"Python role {index}",
+                section="Duration",
+                source_hash=f"fixture-duration-{index}",
+                source_type="career-source",
+                accessed_at=datetime(2026, 8, 30, tzinfo=UTC),
+            ),
+            proposed_claim=(
+                "Maintained 4 years of professional Python development "
+                "experience; checked 2026-08-30."
+            ),
+            match_state=RoleMatchState.TRANSFERABLE_EXPERIENCE,
+        )
+        for index in (1, 2)
+    ]
+    records = [
+        build_evidence_record(
+            candidate,
+            [requirement.requirement_id],
+            mode="targeted_application",
+        )
+        for candidate in candidates
+    ]
+    assert all(record is not None for record in records)
+    canonical_records = [record for record in records if record is not None]
+    [mapping] = build_evidence_map(
+        [requirement],
+        candidates,
+        mode="targeted_application",
+    )
+
+    assert mapping.match_state is RoleMatchState.PENDING_CONFIRMATION
+    assert any("multiple" in item for item in mapping.missing_evidence)
+
+    selected = canonical_records[0]
+    [bound] = bind_experience_duration_diagnostics(
+        [mapping],
+        [requirement],
+        canonical_records,
+        [
+            {
+                "requirement_id": requirement.requirement_id,
+                "diagnostic": {
+                    "candidate_scope": "professional Python development",
+                    "required_scope": "professional Python development",
+                    "unit": "years",
+                    "candidate_years": 4,
+                    "required_min_years": 5,
+                    "evidence_refs": [selected.evidence_id],
+                    "checked_at": "2026-08-30T00:00:00Z",
+                },
+            }
+        ],
+    )
+
+    assert bound.match_state is RoleMatchState.TRANSFERABLE_EXPERIENCE
+    assert selected.evidence_id in bound.evidence_ids
+    assert canonical_records[1].evidence_id not in bound.evidence_ids
+    assert bound.experience_duration_diagnostic is not None
+    assert not any("multiple" in item for item in bound.missing_evidence)
+
+
+@pytest.mark.parametrize("candidate_years", [5, 6])
+def test_manual_duration_binding_preserves_strongest_state_when_threshold_is_met(
+    candidate_factory,
+    candidate_years,
+) -> None:
+    [requirement] = parse_requirements(
+        "# Required\n"
+        "- At least 5 years of professional Python development experience.\n",
+        source_id="fixture-jd",
+    )
+    selected_candidate = candidate_factory(
+        candidate_id=f"candidate-duration-met-manual-{candidate_years}",
+        requirement_ids=[requirement.requirement_id],
+        source=SourceRef(
+            path="personal-data/work/python-selected.md",
+            title="Selected Python role",
+            section="Duration",
+            source_hash="fixture-duration-selected",
+            source_type="career-source",
+            accessed_at=datetime(2026, 8, 30, tzinfo=UTC),
+        ),
+        proposed_claim=(
+            f"Maintained {candidate_years} years of professional Python "
+            "development experience; checked 2026-08-30."
+        ),
+        match_state=RoleMatchState.DIRECT_EVIDENCE,
+    )
+    competing_candidate = candidate_factory(
+        candidate_id="candidate-duration-short-manual",
+        requirement_ids=[requirement.requirement_id],
+        source=SourceRef(
+            path="personal-data/work/python-competing.md",
+            title="Competing Python role",
+            section="Duration",
+            source_hash="fixture-duration-competing",
+            source_type="career-source",
+            accessed_at=datetime(2026, 8, 30, tzinfo=UTC),
+        ),
+        proposed_claim=(
+            "Maintained 4 years of professional Python development "
+            "experience; checked 2026-08-30."
+        ),
+        match_state=RoleMatchState.TRANSFERABLE_EXPERIENCE,
+    )
+    candidates = [selected_candidate, competing_candidate]
+    records = [
+        build_evidence_record(
+            candidate,
+            [requirement.requirement_id],
+            mode="targeted_application",
+        )
+        for candidate in candidates
+    ]
+    assert all(record is not None for record in records)
+    canonical_records = [record for record in records if record is not None]
+    [mapping] = build_evidence_map(
+        [requirement],
+        candidates,
+        mode="targeted_application",
+    )
+    assert mapping.match_state is RoleMatchState.PENDING_CONFIRMATION
+
+    selected_record = canonical_records[0]
+    competing_record = canonical_records[1]
+    [bound] = bind_experience_duration_diagnostics(
+        [mapping],
+        [requirement],
+        canonical_records,
+        [
+            {
+                "requirement_id": requirement.requirement_id,
+                "diagnostic": {
+                    "candidate_scope": "professional Python development",
+                    "required_scope": "professional Python development",
+                    "unit": "years",
+                    "candidate_years": candidate_years,
+                    "required_min_years": 5,
+                    "evidence_refs": [selected_record.evidence_id],
+                    "checked_at": "2026-08-30T00:00:00Z",
+                },
+            }
+        ],
+    )
+
+    assert bound.match_state is RoleMatchState.DIRECT_EVIDENCE
+    assert selected_record.evidence_id in bound.evidence_ids
+    assert competing_record.evidence_id not in bound.evidence_ids
+    assert bound.experience_duration_diagnostic is None
+    assert "meets the 5-year threshold" in bound.selection_reason
+    assert not any(
+        "experience-duration shortfall" in risk
+        for risk in bound.interview_risks
+    )
+
 
 def test_direct_state_without_evidence_is_rejected() -> None:
     with pytest.raises(ValidationError, match="direct evidence"):
