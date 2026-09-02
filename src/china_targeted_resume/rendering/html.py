@@ -9,6 +9,8 @@ from typing import Any, Mapping
 
 from jinja2 import Environment, FileSystemLoader, StrictUndefined, select_autoescape
 
+from china_targeted_resume.composition import resume_labels
+
 _ALLOWED_TEMPLATES = frozenset({"ats-simple", "human-readable"})
 _FONT_ROOT = Path("/usr/share/fonts")
 _FONT_NAMES = (
@@ -115,6 +117,7 @@ def render_html(document: Any, template: str = "human-readable") -> str:
         auto_reload=False,
     )
     context = _document_context(document)
+    context["labels"] = resume_labels(context.get("locale"))
     context.update(
         base_css=base_path.read_text(encoding="utf-8") + "\n" + font_css,
         theme_css=theme_path.read_text(encoding="utf-8"),

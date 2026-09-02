@@ -7,7 +7,10 @@ import pymupdf
 import pytest
 
 
-from china_targeted_resume.composition import compact_resume_document
+from china_targeted_resume.composition import (
+    compact_resume_document,
+    render_targeted_markdown,
+)
 from china_targeted_resume.models import ResumeDocument, ValidationReport
 from china_targeted_resume.rendering import render_html
 from china_targeted_resume.rendering.inspect import InspectionConfig, inspect_pdf
@@ -100,6 +103,7 @@ def test_both_templates_share_single_column_semantic_read_order_and_local_cjk_fo
 
     assert _section_order(rendered["ats-simple"]) == SECTION_ORDER
     assert _section_order(rendered["human-readable"]) == SECTION_ORDER
+    markdown = render_targeted_markdown(document)
     for html in rendered.values():
         assert "@font-face" in html
         assert "font-family: 'Resume CJK'" in html
@@ -109,11 +113,30 @@ def test_both_templates_share_single_column_semantic_read_order_and_local_cjk_fo
         assert "mailto:lin.ming@career-fixture.invalid" in html
         assert "https://career-fixture.invalid/lin" in html
         assert "<img" not in html and "<svg" not in html
-        assert all(label in html for label in ("Phone:", "Email:", "Location:"))
+        assert all(
+            label in html
+            for label in (
+                "电话：",
+                "邮箱：",
+                "所在地：",
+                "职业概述",
+                "专业技能",
+                "工作经历",
+                "项目经历",
+                "教育经历",
+                "荣誉奖项",
+                "相关链接",
+                "技术栈：",
+            )
+        )
         assert "> to <" not in html
         assert "> – <" in html
         assert "<time>2022-01</time> <time>至今</time>" in html
         assert "<time>2020-01</time> – <time>2021-12</time>" in html
+    assert "## 职业概述" in markdown
+    assert "## 工作经历" in markdown
+    assert "## Professional Summary" not in markdown
+    assert "## Experience" not in markdown
 
 
 def test_one_page_compaction_removes_low_priority_content_before_touching_typography() -> None:

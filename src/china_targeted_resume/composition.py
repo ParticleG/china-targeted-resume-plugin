@@ -20,10 +20,51 @@ _PLACEHOLDER = re.compile(
     r"<(?:(?i:insert|replace|todo)|[A-Z][A-Z0-9_-]{2,})>|"
     r"\b(?i:TODO|TBD|TBC|PLACEHOLDER|LOREM IPSUM)\b)"
 )
-_SECTION_LABELS = {
-    "summary": "Professional Summary", "skills": "Skills", "experience": "Experience",
-    "projects": "Projects", "education": "Education", "honors": "Honors", "links": "Links",
+_RESUME_LABELS: dict[str, dict[str, str]] = {
+    "en": {
+        "document_title": "Resume",
+        "resume_for": "Resume for ",
+        "contact_details": "Contact details",
+        "phone": "Phone:",
+        "email": "Email:",
+        "location": "Location:",
+        "summary": "Professional Summary",
+        "skills": "Skills",
+        "experience": "Experience",
+        "projects": "Projects",
+        "education": "Education",
+        "honors": "Honors",
+        "links": "Links",
+        "technologies": "Technologies:",
+        "selected_evidence": "Selected Evidence",
+    },
+    "zh": {
+        "document_title": "简历",
+        "resume_for": "简历：",
+        "contact_details": "联系方式",
+        "phone": "电话：",
+        "email": "邮箱：",
+        "location": "所在地：",
+        "summary": "职业概述",
+        "skills": "专业技能",
+        "experience": "工作经历",
+        "projects": "项目经历",
+        "education": "教育经历",
+        "honors": "荣誉奖项",
+        "links": "相关链接",
+        "technologies": "技术栈：",
+        "selected_evidence": "补充经历",
+    },
 }
+
+
+def resume_labels(locale: Any) -> Mapping[str, str]:
+    """Return visible structural labels for the requested resume locale."""
+
+    language = "zh" if str(locale or "").casefold().startswith("zh") else "en"
+    return _RESUME_LABELS[language]
+
+
 _EXCLUDED_RESUME_SECTION_MARKERS = (
     "overview",
     "background",
@@ -551,7 +592,20 @@ def build_resume_document(
     assigned.update(str(value) for value in _items(_get(candidate_profile, "metadata_evidence_ids", ())))
     unassigned = [record for record in ranked if str(_get(record, "evidence_id")) not in assigned]
     if unassigned:
-        projects.append({"name": "Selected Evidence", "role": None, "context": None, "start_date": None, "end_date": None, "technologies": [], "bullets": [_bullet(record, ranked.index(record), len(ranked)) for record in unassigned]})
+        projects.append(
+            {
+                "name": resume_labels(locale)["selected_evidence"],
+                "role": None,
+                "context": None,
+                "start_date": None,
+                "end_date": None,
+                "technologies": [],
+                "bullets": [
+                    _bullet(record, ranked.index(record), len(ranked))
+                    for record in unassigned
+                ],
+            }
+        )
     refs.extend(ref for record in ranked if (ref := provenance_ref(record)))
     target = _dict(target_context)
     headline = str(_get(candidate_profile, "headline", default="") or (target.get("role") if mode_value == "targeted_application" else "") or "").strip()
@@ -608,22 +662,40 @@ def _format_date_range(start_date: Any, end_date: Any) -> str:
 
 
 def render_targeted_markdown(document: Any) -> str:
-    data = _dict(document); contact = _dict(data.get("contact", {})); lines: list[str] = []
-    if contact.get("name"): lines.append(f"# {contact['name']}")
-    if data.get("headline"): lines.append(f"**{data['headline']}**")
-    contact_line = " | ".join(str(contact[key]) for key in ("phone", "email", "location") if contact.get(key))
-    if contact_line: lines.extend((contact_line, ""))
+    data = _dict(document)
+    contact = _dict(data.get("contact", {}))
+    labels = resume_labels(data.get("locale"))
+    lines: list[str] = []
+    if contact.get("name"):
+        lines.append(f"# {contact['name']}")
+    if data.get("headline"):
+        lines.append(f"**{data['headline']}**")
+    contact_line = " | ".join(
+        str(contact[key])
+        for key in ("phone", "email", "location")
+        if contact.get(key)
+    )
+    if contact_line:
+        lines.extend((contact_line, ""))
     if data.get("summary"):
-        lines.append("## Professional Summary"); lines.extend(f"- {value}" for value in data["summary"]); lines.append("")
-    if data.get("skills"):
-        lines.append("## Skills")
-        for group in data["skills"]: lines.append(f"- **{_get(group, 'group')}**: {', '.join(map(str, _items(_get(group, 'items', default=[]))))}")
+        lines.append(f"## {labels['summary']}")
+        lines.extend(f"- {value}" for value in data["summary"])
         lines.append("")
-    for section, title in (("experience", "Experience"), ("projects", "Projects")):
-        if not data.get(section): continue
-        lines.append(f"## {title}")
+    if data.get("skills"):
+        lines.append(f"## {labels['skills']}")
+        for group in data["skills"]:
+            lines.append(
+                f"- **{_get(group, 'group')}**: "
+                f"{', '.join(map(str, _items(_get(group, 'items', default=[]))))}"
+            )
+        lines.append("")
+    for section in ("experience", "projects"):
+        if not data.get(section):
+            continue
+        lines.append(f"## {labels[section]}")
         for item in data[section]:
-            name = _get(item, "organization", "name", default=""); role = _get(item, "role", default="")
+            name = _get(item, "organization", "name", default="")
+            role = _get(item, "role", default="")
             lines.append(f"### {name}" + (f" — {role}" if role else ""))
             dates = _format_date_range(
                 _get(item, "start_date", default=""),
@@ -631,32 +703,51 @@ def render_targeted_markdown(document: Any) -> str:
             )
             location = _get(item, "location", default="")
             if dates or location:
-                lines.append(" | ".join(str(value) for value in (dates, location) if value))
+                lines.append(
+                    " | ".join(str(value) for value in (dates, location) if value)
+                )
             context = _get(item, "context", default="")
-            if context: lines.append(str(context))
+            if context:
+                lines.append(str(context))
             technologies = _items(_get(item, "technologies", default=[]))
-            if technologies: lines.append("Technologies: " + ", ".join(map(str, technologies)))
+            if technologies:
+                lines.append(
+                    f"{labels['technologies']} " + ", ".join(map(str, technologies))
+                )
             lines.extend(f"- {text}" for text in _bullet_lines(item))
         lines.append("")
-    for section, title in (("education", "Education"), ("honors", "Honors")):
-        if not data.get(section): continue
-        lines.append(f"## {title}")
+    for section in ("education", "honors"):
+        if not data.get(section):
+            continue
+        lines.append(f"## {labels[section]}")
         for item in data[section]:
             value = _get(item, "institution", "name", default="")
-            details = [_get(item, "degree", "issuer", default=""), _get(item, "field", default="")]
+            details = [
+                _get(item, "degree", "issuer", default=""),
+                _get(item, "field", default=""),
+            ]
             dates = _format_date_range(
                 _get(item, "start_date", "date", default=""),
                 _get(item, "end_date", default=""),
             )
-            lines.append("- " + " — ".join(str(part) for part in (value, *details, dates) if part))
+            lines.append(
+                "- "
+                + " — ".join(str(part) for part in (value, *details, dates) if part)
+            )
             extra = _items(_get(item, "details", default=[]))
-            if extra: lines.extend(f"  - {part}" for part in extra)
+            if extra:
+                lines.extend(f"  - {part}" for part in extra)
         lines.append("")
     links = _items(contact.get("links"))
     if links:
-        lines.append("## Links"); lines.extend(f"- [{_get(link, 'label')}]({_get(link, 'url')})" for link in links); lines.append("")
+        lines.append(f"## {labels['links']}")
+        lines.extend(
+            f"- [{_get(link, 'label')}]({_get(link, 'url')})" for link in links
+        )
+        lines.append("")
     text = "\n".join(lines).rstrip() + "\n"
-    if contains_placeholder(text): raise ValueError("resume contains an unresolved placeholder")
+    if contains_placeholder(text):
+        raise ValueError("resume contains an unresolved placeholder")
     return text
 
 

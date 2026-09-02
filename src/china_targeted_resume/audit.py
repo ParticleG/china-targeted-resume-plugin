@@ -11,6 +11,7 @@ from china_targeted_resume.composition import (
     fact_ledger_ref,
     provenance_ref,
     render_ats_text,
+    resume_labels,
     resume_claim_is_substantive,
 )
 from china_targeted_resume.models import ResumeVariant, ValidationReport
@@ -20,6 +21,8 @@ _SECRET = re.compile(r"(?i)(?:api[_-]?key|access[_-]?token|client[_-]?secret|pas
 _INTERNAL_URL = re.compile(r"(?i)(?:file|ssh)://|https?://(?:localhost|127\.0\.0\.1|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(?:1[6-9]|2\d|3[01])\.\d+\.\d+|[^/\s]+\.(?:internal|local))(?:[/:]|\b)")
 _PRIVATE_LOG = re.compile(r"(?i)(?:private|internal|customer)[-_ /]?(?:log|repo|repository|trace)s?\b|(?:^|[/\\])(?:logs?|\.git)(?:[/\\]|$)")
 _METRIC = re.compile(r"(?<!\w)(?:~|≈|about|approximately|roughly|nearly|more than|less than)?\s*\d+(?:[.,]\d+)?\s*(?:%|ms|s|sec(?:onds?)?|minutes?|hours?|days?|x|倍|万|亿|个|人|台|次|条|项)?", re.I)
+_CJK = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff]")
+_ENGLISH_WORD = re.compile(r"[A-Za-z]+(?:['’-][A-Za-z]+)*")
 
 
 @dataclass(frozen=True)
@@ -97,6 +100,7 @@ def _fact_prefix(text: Any) -> str:
 def _visible_facts(document: Any) -> list[tuple[str, str]]:
     """Enumerate the same non-structural facts emitted by both text renderers."""
     data = _dict(document); facts: list[tuple[str, str]] = []
+    selected_evidence_label = resume_labels(data.get("locale"))["selected_evidence"]
     contact = _dict(data.get("contact", {}))
     for key in ("name", "phone", "email", "location"):
         if contact.get(key): facts.append((f"contact.{key}", str(contact[key])))
@@ -114,7 +118,9 @@ def _visible_facts(document: Any) -> list[tuple[str, str]]:
         for index, item in enumerate(_items(data.get(section))):
             for key in ("organization", "name", "role", "location", "start_date", "end_date", "context"):
                 value = _get(item, key, default="")
-                if value and not (key == "name" and value == "Selected Evidence"):
+                if value and not (
+                    key == "name" and value == selected_evidence_label
+                ):
                     facts.append((f"{section}[{index + 1}].{key}", str(value)))
             facts.extend((f"{section}[{index + 1}].technologies[{tech_index + 1}]", str(value)) for tech_index, value in enumerate(_items(_get(item, "technologies", default=[]))))
             facts.extend((f"{section}[{index + 1}].bullets[{bullet_index + 1}]", str(_get(bullet, "text", default=""))) for bullet_index, bullet in enumerate(_items(_get(item, "bullets", default=[]))) if _get(bullet, "text", default=""))
@@ -132,6 +138,54 @@ def _report(category: str, findings: Sequence[_Finding], checks: Mapping[str, bo
     return ValidationReport(success=not errors, checks=dict(checks or {}), errors=errors, warnings=warnings, details={"category": category, "finding_count": len(findings)})
 
 
+def _narrative_fields(document: Any) -> list[tuple[str, str]]:
+    data = _dict(document)
+    fields: list[tuple[str, str]] = []
+    if data.get("headline"):
+        fields.append(("headline", str(data["headline"])))
+    fields.extend(
+        (f"summary[{index + 1}]", str(value))
+        for index, value in enumerate(_items(data.get("summary")))
+        if str(value).strip()
+    )
+    for section in ("experience", "projects"):
+        for index, item in enumerate(_items(data.get(section))):
+            context = str(_get(item, "context", default="") or "").strip()
+            if context:
+                fields.append((f"{section}[{index + 1}].context", context))
+            fields.extend(
+                (
+                    f"{section}[{index + 1}].bullets[{bullet_index + 1}]",
+                    str(_get(bullet, "text", default="")),
+                )
+                for bullet_index, bullet in enumerate(
+                    _items(_get(item, "bullets", default=[]))
+                )
+                if str(_get(bullet, "text", default="")).strip()
+            )
+    for section in ("education", "honors"):
+        for index, item in enumerate(_items(data.get(section))):
+            fields.extend(
+                (f"{section}[{index + 1}].details[{detail_index + 1}]", str(value))
+                for detail_index, value in enumerate(
+                    _items(_get(item, "details", default=[]))
+                )
+                if str(value).strip()
+            )
+    return fields
+
+
+def _language_mismatches(document: Any) -> list[str]:
+    locale = str(_get(document, "locale", default="") or "").casefold()
+    if not locale.startswith("zh"):
+        return []
+    return [
+        path
+        for path, text in _narrative_fields(document)
+        if not _CJK.search(text) and len(_ENGLISH_WORD.findall(text)) >= 3
+    ]
+
+
 def _ats_findings(document: Any, requirements: Sequence[Any]) -> tuple[list[_Finding], dict[str, bool]]:
     findings: list[_Finding] = []
     data = _dict(document); contact = _dict(data.get("contact", {}))
@@ -145,6 +199,15 @@ def _ats_findings(document: Any, requirements: Sequence[Any]) -> tuple[list[_Fin
     standard_sections = all(isinstance(data.get(name, []), list) for name in ("summary", "skills", "experience", "projects", "education", "honors"))
     if not standard_sections:
         findings.append(_Finding("ats", "section_shape", "Use standard list-based resume sections in canonical order."))
+    language_mismatches = _language_mismatches(document)
+    for path in language_mismatches:
+        findings.append(
+            _Finding(
+                "ats",
+                "language_mismatch",
+                f"Translate English-only narrative field {path} for the requested zh-CN resume without changing its evidence boundary.",
+            )
+        )
     evidence_text = " ".join(str(_get(bullet, "text", default="")) for _, _, bullet in _bullets(document)).casefold()
     for group_index, group in enumerate(_items(data.get("skills", []))):
         for skill in _items(_get(group, "items", default=[])):
@@ -157,7 +220,13 @@ def _ats_findings(document: Any, requirements: Sequence[Any]) -> tuple[list[_Fin
     missing = sorted({keyword for keyword in required_keywords if keyword and keyword.casefold() not in text.casefold()}, key=str.casefold)
     if missing:
         findings.append(_Finding("ats", "keyword_coverage", "Review natural coverage for high-priority keywords: " + ", ".join(missing), error=False))
-    checks = {"single_column_model": True, "canonical_section_order": standard_sections, "no_image_only_text": True, "no_placeholders": not contains_placeholder(text)}
+    checks = {
+        "single_column_model": True,
+        "canonical_section_order": standard_sections,
+        "no_image_only_text": True,
+        "no_placeholders": not contains_placeholder(text),
+        "locale_consistent_narrative": not language_mismatches,
+    }
     return findings, checks
 
 

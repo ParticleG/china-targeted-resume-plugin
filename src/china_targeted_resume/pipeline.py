@@ -26,6 +26,7 @@ from .composition import (
     resume_claim_priority,
     render_ats_text,
     render_targeted_markdown,
+    resume_labels,
 )
 from .dossier import DOSSIER_FILES, refresh_role as refresh_role_sections, render_dossier_files
 from .evidence import (
@@ -1840,19 +1841,20 @@ def _variant_artifact_names(spec: ResumeVariantSpec) -> dict[str, str]:
 
 
 def _document_headings(document: Any) -> tuple[str, ...]:
+    labels = resume_labels(document.locale)
     headings = tuple(
-        label
-        for field, label in (
-            ("summary", "Summary"),
-            ("skills", "Skills"),
-            ("experience", "Experience"),
-            ("projects", "Projects"),
-            ("education", "Education"),
-            ("honors", "Honors"),
+        labels[field]
+        for field in (
+            "summary",
+            "skills",
+            "experience",
+            "projects",
+            "education",
+            "honors",
         )
         if getattr(document, field)
     )
-    return headings + (("Links",) if document.contact.links else ())
+    return headings + ((labels["links"],) if document.contact.links else ())
 
 
 def _inspection_for_document(document: Any) -> InspectionConfig:

@@ -319,7 +319,12 @@ def test_every_visible_fact_has_provenance_and_company_research_is_rejected_as_p
 
 def test_audits_warn_on_underfill_and_detect_targeted_regressions() -> None:
     record = _evidence("ev-platform", "Personally automated release controls for the platform.")
-    document = build_resume_document(_profile(), _target(), [record])
+    document = build_resume_document(
+        _profile(),
+        _target(),
+        [record],
+        locale="en-US",
+    )
 
     reports = {
         "ats": audit_ats(document),
@@ -362,6 +367,55 @@ def test_audits_warn_on_underfill_and_detect_targeted_regressions() -> None:
     technical = audit_technical(expanded, [record])
     assert not truth.success and not truth.checks["safe_claim_unchanged"]
     assert not technical.success and not technical.checks["metric_wording_preserved"]
+
+
+def test_zh_cn_audit_rejects_english_only_narrative_but_keeps_technical_terms() -> None:
+    english_profile = _profile()
+    english_profile["summary"] = [
+        "Built reliable platform services for enterprise users."
+    ]
+    english_record = _evidence(
+        "ev-platform",
+        "Personally automated release controls for the platform.",
+    )
+    english_document = build_resume_document(
+        english_profile,
+        _target(),
+        [english_record],
+        locale="zh-CN",
+    )
+
+    english_report = audit_ats(english_document)
+
+    assert not english_report.success
+    assert not english_report.checks["locale_consistent_narrative"]
+    assert any(
+        "ats.language_mismatch" in error and "summary[1]" in error
+        for error in english_report.errors
+    )
+    assert any(
+        "ats.language_mismatch" in error
+        and "experience[1].bullets[1]" in error
+        for error in english_report.errors
+    )
+
+    chinese_profile = _profile()
+    chinese_profile["summary"] = ["使用 Kubernetes 构建可靠的生产平台。"]
+    mixed_record = _evidence(
+        "ev-platform",
+        "使用 Python、FastAPI 和 Redis 实现发布控制自动化。",
+    )
+    mixed_document = build_resume_document(
+        chinese_profile,
+        _target(),
+        [mixed_record],
+        locale="zh-CN",
+    )
+
+    mixed_report = audit_ats(mixed_document)
+
+    assert mixed_report.success, mixed_report.errors
+    assert mixed_report.checks["locale_consistent_narrative"]
 
 
 def test_hr_audit_warns_on_underfilled_technical_and_extended_documents() -> None:

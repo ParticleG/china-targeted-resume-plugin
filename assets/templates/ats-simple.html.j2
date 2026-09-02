@@ -14,7 +14,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex, nofollow, noarchive">
-  <title>{{ contact.name }} | Resume</title>
+  <title>{{ contact.name }} | {{ labels.document_title }}</title>
   <style data-resume-styles="embedded">
 {{ base_css | safe }}
 {{ theme_css | safe }}
@@ -29,27 +29,27 @@
   </style>
 </head>
 <body>
-  <main class="resume-document {{ template_class }}" data-resume-variant="{{ variant }}" aria-label="Resume for {{ contact.name }}">
+  <main class="resume-document {{ template_class }}" data-resume-variant="{{ variant }}" aria-label="{{ labels.resume_for }}{{ contact.name }}">
     <header id="contact" class="resume-header" data-section-id="contact">
       <h1 class="resume-name">{{ contact.name }}</h1>
       {% if headline %}<p class="resume-headline">{{ headline }}</p>{% endif %}
-      <address aria-label="Contact details">
+      <address aria-label="{{ labels.contact_details }}">
         <ul class="contact-list">
           {% if contact.phone %}
           <li class="contact-item">
-            <span class="contact-label">Phone:</span>
+            <span class="contact-label">{{ labels.phone }}</span>
             <a href="tel:{{ contact.phone }}">{{ contact.phone }}</a>
           </li>
           {% endif %}
           {% if contact.email %}
           <li class="contact-item">
-            <span class="contact-label">Email:</span>
+            <span class="contact-label">{{ labels.email }}</span>
             <a href="mailto:{{ contact.email }}">{{ contact.email }}</a>
           </li>
           {% endif %}
           {% if contact.location %}
           <li class="contact-item">
-            <span class="contact-label">Location:</span>
+            <span class="contact-label">{{ labels.location }}</span>
             <span>{{ contact.location }}</span>
           </li>
           {% endif %}
@@ -59,7 +59,7 @@
 
     {% if summary %}
     <section id="summary" class="resume-section" data-section-id="summary" aria-labelledby="summary-heading">
-      <h2 id="summary-heading" class="section-heading">Summary</h2>
+      <h2 id="summary-heading" class="section-heading">{{ labels.summary }}</h2>
       <ul class="summary-list">
         {% for item in summary %}<li class="summary-item">{{ item }}</li>{% endfor %}
       </ul>
@@ -68,7 +68,7 @@
 
     {% if skills %}
     <section id="skills" class="resume-section" data-section-id="skills" aria-labelledby="skills-heading">
-      <h2 id="skills-heading" class="section-heading">Skills</h2>
+      <h2 id="skills-heading" class="section-heading">{{ labels.skills }}</h2>
       <dl class="skills-list">
         {% for skill in skills %}
         <div class="skill-group">
@@ -82,7 +82,7 @@
 
     {% if experience %}
     <section id="experience" class="resume-section" data-section-id="experience" aria-labelledby="experience-heading">
-      <h2 id="experience-heading" class="section-heading">Experience</h2>
+      <h2 id="experience-heading" class="section-heading">{{ labels.experience }}</h2>
       {% for entry in experience %}
       <article class="resume-entry" data-entry-kind="experience">
         <header class="entry-header">
@@ -106,7 +106,7 @@
 
     {% if projects %}
     <section id="projects" class="resume-section" data-section-id="projects" aria-labelledby="projects-heading">
-      <h2 id="projects-heading" class="section-heading">Projects</h2>
+      <h2 id="projects-heading" class="section-heading">{{ labels.projects }}</h2>
       {% for project in projects %}
       <article class="resume-entry" data-entry-kind="project">
         <header class="entry-header">
@@ -119,7 +119,7 @@
           {% endif %}
         </header>
         {% if project.context %}<p class="entry-context">{{ project.context }}</p>{% endif %}
-        {% if project.technologies %}<p class="entry-technologies"><span class="field-label">Technologies:</span> {{ project.technologies | join(', ') }}</p>{% endif %}
+        {% if project.technologies %}<p class="entry-technologies"><span class="field-label">{{ labels.technologies }}</span> {{ project.technologies | join(', ') }}</p>{% endif %}
         {% if project.bullets %}
         <ul class="entry-bullets">
           {% for bullet in project.bullets %}<li>{{ bullet.text }}</li>{% endfor %}
@@ -132,7 +132,7 @@
 
     {% if education %}
     <section id="education" class="resume-section" data-section-id="education" aria-labelledby="education-heading">
-      <h2 id="education-heading" class="section-heading">Education</h2>
+      <h2 id="education-heading" class="section-heading">{{ labels.education }}</h2>
       {% for entry in education %}
       <article class="resume-entry" data-entry-kind="education">
         <header class="entry-header">
@@ -160,7 +160,7 @@
 
     {% if honors %}
     <section id="honors" class="resume-section" data-section-id="honors" aria-labelledby="honors-heading">
-      <h2 id="honors-heading" class="section-heading">Honors</h2>
+      <h2 id="honors-heading" class="section-heading">{{ labels.honors }}</h2>
       {% for honor in honors %}
       <article class="resume-entry" data-entry-kind="honor">
         <header class="entry-header">
@@ -176,7 +176,7 @@
 
     {% if contact.links %}
     <section id="links" class="resume-section" data-section-id="links" aria-labelledby="links-heading">
-      <h2 id="links-heading" class="section-heading">Links</h2>
+      <h2 id="links-heading" class="section-heading">{{ labels.links }}</h2>
       <ul class="link-list">
         {% for link in contact.links %}
         <li class="link-item"><a href="{{ link.url }}"><span class="link-label">{{ link.label }}</span> <span class="link-url">({{ link.url }})</span></a></li>
